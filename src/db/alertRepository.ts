@@ -80,4 +80,34 @@ export const alertRepository = {
       ORDER BY a.created_at DESC
     `).all(sinceMs) as AlertWithDetails[];
   },
+
+  getById(id: number): AlertWithDetails | undefined {
+    return db.prepare(`
+      SELECT a.*, s.ticker, e.event_type, e.direction, e.price,
+             e.trend_before, e.trend_after, e.pivot_level, e.candle_epoch
+      FROM alerts a
+      JOIN events e ON a.event_id = e.id
+      JOIN symbols s ON e.symbol_id = s.id
+      WHERE a.id = ?
+    `).get(id) as AlertWithDetails | undefined;
+  },
+
+  getByEmailId(emailId: number): AlertWithDetails[] {
+    return db.prepare(`
+      SELECT a.*, s.ticker, e.event_type, e.direction, e.price,
+             e.trend_before, e.trend_after, e.pivot_level, e.candle_epoch
+      FROM alerts a
+      JOIN events e ON a.event_id = e.id
+      JOIN symbols s ON e.symbol_id = s.id
+      WHERE a.email_id = ?
+      ORDER BY a.created_at ASC
+    `).all(emailId) as AlertWithDetails[];
+  },
+
+  getLatestTimestamp(): number | null {
+    const row = db.prepare(
+      'SELECT MAX(created_at) as latest FROM alerts'
+    ).get() as any;
+    return row?.latest ?? null;
+  },
 };

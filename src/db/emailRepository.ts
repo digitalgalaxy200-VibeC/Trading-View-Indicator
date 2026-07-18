@@ -27,4 +27,9 @@ export const emailRepository = {
     const row = db.prepare('SELECT COUNT(*) as cnt FROM emails').get() as any;
     return row.cnt || 0;
   },
+
+  getById(id: number): EmailRow | undefined {
+    return db.prepare('SELECT * FROM emails WHERE id = ?').get(id) as EmailRow | undefined;
+  },
 };
+

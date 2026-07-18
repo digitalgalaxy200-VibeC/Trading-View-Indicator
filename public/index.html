@@ -72,7 +72,7 @@
     0%,100% { opacity:1; }
     50% { opacity:0.3; }
   }
-  .refresh-btn {
+  .action-btn {
     background: var(--bg3);
     border: 1px solid var(--border);
     color: var(--muted);
@@ -83,7 +83,7 @@
     font-family: inherit;
     transition: all 0.2s;
   }
-  .refresh-btn:hover { color: var(--text); border-color: var(--accent); }
+  .action-btn:hover { color: var(--text); border-color: var(--accent); }
 
   /* ── Layout ── */
   main { padding: 24px; max-width: 1400px; margin: auto; }
@@ -205,13 +205,18 @@
   .market-card .price-item .pval { color: var(--text); font-weight: 500; }
   .market-card .updated { font-size: 10px; color: var(--muted); margin-top: 6px; }
 
-  /* ── Filter Bar ── */
+  /* ── Filter & Pagination Bar ── */
   .filter-bar {
     display: flex;
-    gap: 6px;
+    justify-content: space-between;
+    align-items: center;
     padding: 12px 16px;
     border-bottom: 1px solid var(--border);
     background: var(--bg3);
+  }
+  .filter-group {
+    display: flex;
+    gap: 6px;
   }
   .filter-btn {
     background: transparent;
@@ -230,6 +235,22 @@
     border-color: var(--accent);
     color: #fff;
   }
+  .pagination {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .page-btn {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .page-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* ── Table ── */
   .table-wrap { overflow-x: auto; }
@@ -250,8 +271,8 @@
     border-bottom: 1px solid rgba(30,45,69,0.5);
     white-space: nowrap;
   }
-  tr:last-child td { border-bottom: none; }
-  tr:hover td { background: var(--bg3); }
+  tr.clickable { cursor: pointer; transition: background 0.15s; }
+  tr.clickable:hover { background: var(--bg3); }
   .bull-text { color: var(--bull); font-weight: 600; }
   .bear-text { color: var(--bear); font-weight: 600; }
   .muted-text { color: var(--muted); font-size: 12px; }
@@ -293,6 +314,81 @@
     font-size: 13px;
   }
 
+  /* ── Modal ── */
+  .modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .modal-content {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    transform: translateY(20px);
+    transition: transform 0.2s;
+  }
+  .modal-overlay.active .modal-content {
+    transform: translateY(0);
+  }
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .modal-title { font-weight: 600; font-size: 16px; }
+  .modal-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 24px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .modal-close:hover { color: #fff; }
+  .modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-lbl { color: var(--muted); }
+  .detail-val { font-weight: 500; }
+  .summary-box {
+    background: var(--bg2);
+    padding: 16px;
+    border-radius: 8px;
+    margin-top: 10px;
+    white-space: pre-wrap;
+    font-family: inherit;
+    border: 1px solid var(--border);
+  }
+
   /* ── Footer ── */
   footer {
     text-align: center;
@@ -324,7 +420,8 @@
   <div class="header-right">
     <div class="live-badge"><div class="live-dot"></div>LIVE</div>
     <div id="last-updated" style="font-size:11px;color:var(--muted);">Loading...</div>
-    <button class="refresh-btn" onclick="loadAll()">⟳ Refresh</button>
+    <button id="notify-btn" class="action-btn" onclick="enableNotifications()">🔔 Enable Notifications</button>
+    <button class="action-btn" onclick="loadAll()">⟳ Refresh</button>
   </div>
 </header>
 
@@ -358,10 +455,17 @@
       <div class="section-badge" id="alerts-count">—</div>
     </div>
     <div class="filter-bar">
-      <button class="filter-btn active" data-filter="today">Today</button>
-      <button class="filter-btn" data-filter="yesterday">Yesterday</button>
-      <button class="filter-btn" data-filter="week">This Week</button>
-      <button class="filter-btn" data-filter="all">All</button>
+      <div class="filter-group">
+        <button class="filter-btn active" data-filter="today">Today</button>
+        <button class="filter-btn" data-filter="yesterday">Yesterday</button>
+        <button class="filter-btn" data-filter="week">This Week</button>
+        <button class="filter-btn" data-filter="all">All</button>
+      </div>
+      <div class="pagination">
+        <button class="page-btn" id="alerts-prev" onclick="changeAlertPage(-1)" disabled>&lt;</button>
+        <span id="alerts-page-info">Page 1</span>
+        <button class="page-btn" id="alerts-next" onclick="changeAlertPage(1)" disabled>&gt;</button>
+      </div>
     </div>
     <div class="table-wrap">
       <table>
@@ -390,6 +494,13 @@
       <div class="section-title">Email Notification Log</div>
       <div class="section-badge" id="emails-count">—</div>
     </div>
+    <div class="filter-bar" style="justify-content: flex-end;">
+      <div class="pagination">
+        <button class="page-btn" id="emails-prev" onclick="changeEmailPage(-1)" disabled>&lt;</button>
+        <span id="emails-page-info">Page 1</span>
+        <button class="page-btn" id="emails-next" onclick="changeEmailPage(1)" disabled>&gt;</button>
+      </div>
+    </div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -410,13 +521,27 @@
 </main>
 
 <footer>
-  AI Trend Assistant v2 — For informational purposes only. Not financial advice.<br>
+  AI Trend Assistant v2.1 — For informational purposes only. Not financial advice.<br>
   Auto-refreshes every 60 seconds.
 </footer>
+
+<!-- Reusable Modal -->
+<div class="modal-overlay" id="modal" onclick="if(event.target === this) closeModal()">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Details</div>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="modal-body" id="modal-body">
+      Loading...
+    </div>
+  </div>
+</div>
 
 <script>
 const API = '/api';
 
+// Utilities
 function timeAgo(ms) {
   if (!ms) return '—';
   const diff = Date.now() - ms;
@@ -436,9 +561,84 @@ function formatPrice(n) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 5 });
 }
 function tvUrl(ticker) {
-  return 'https://www.tradingview.com/chart/?symbol=DERIV:' + ticker;
+  return 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(ticker);
 }
 
+// ── State variables ──
+let alertsData = [];
+let emailsData = [];
+const PAGE_SIZE = 25;
+let currentAlertPage = 1;
+let currentEmailPage = 1;
+let currentFilter = 'today';
+let lastPolledTimestamp = null;
+
+// ── Modals ──
+function openModal(title, html) {
+  document.getElementById('modal-title').innerHTML = title;
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('modal').classList.add('active');
+}
+function closeModal() {
+  document.getElementById('modal').classList.remove('active');
+}
+
+async function viewAlert(id) {
+  try {
+    const res = await fetch(API + '/alerts/' + id);
+    const a = await res.json();
+    const dirClass = a.direction === 'BULLISH' ? 'bull-text' : 'bear-text';
+    const statusEl = a.status === 'sent' ? `<span class="status-sent">SENT</span>`
+      : a.status === 'pending' ? `<span class="status-pending">PENDING</span>`
+      : `<span class="status-failed">FAILED</span>`;
+
+    const html = `
+      <div class="detail-row"><span class="detail-lbl">Symbol</span><span class="detail-val">${a.ticker}</span></div>
+      <div class="detail-row"><span class="detail-lbl">Event</span><span class="detail-val">${a.event_type}</span></div>
+      <div class="detail-row"><span class="detail-lbl">Direction</span><span class="detail-val ${dirClass}">${a.direction}</span></div>
+      <div class="detail-row"><span class="detail-lbl">Price</span><span class="detail-val">${formatPrice(a.price)}</span></div>
+      <div class="detail-row"><span class="detail-lbl">Pivot Level</span><span class="detail-val">${formatPrice(a.pivot_level)}</span></div>
+      <div class="detail-row"><span class="detail-lbl">Time</span><span class="detail-val">${formatDateTime(a.created_at)}</span></div>
+      <div class="detail-row"><span class="detail-lbl">Status</span><span class="detail-val">${statusEl}</span></div>
+      <div style="margin-top:20px;text-align:center;">
+        <a href="${tvUrl(a.ticker)}" target="_blank" style="display:inline-block;padding:10px 20px;background:var(--accent);color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open Chart on TradingView</a>
+      </div>
+    `;
+    openModal('Alert Details', html);
+  } catch(e) { console.error(e); }
+}
+
+async function viewEmail(id) {
+  try {
+    const res = await fetch(API + '/emails/' + id);
+    const e = await res.json();
+    const statusEl = e.status === 'sent' ? `<span class="status-sent">DELIVERED</span>` : `<span class="status-failed">FAILED</span>`;
+
+    let alertsHtml = (e.alerts || []).map(a => `<li><b>${a.ticker}</b>: ${a.direction} ${a.event_type} @ ${formatPrice(a.price)}</li>`).join('');
+    if (!alertsHtml) alertsHtml = '<li>No alerts found for this email.</li>';
+
+    const html = `
+      <div class="detail-row"><span class="detail-lbl">Sent At</span><span class="detail-val">${formatDateTime(e.sent_at)}</span></div>
+      <div class="detail-row"><span class="detail-lbl">Status</span><span class="detail-val">${statusEl}</span></div>
+      
+      <div style="margin-top:16px;">
+        <span class="detail-lbl">Alerts Included (${e.alert_count}):</span>
+        <ul style="margin-top:8px;padding-left:20px;color:var(--text);font-size:13px;line-height:1.6;">
+          ${alertsHtml}
+        </ul>
+      </div>
+
+      <div style="margin-top:16px;">
+        <span class="detail-lbl">AI Summary:</span>
+        <div class="summary-box">${e.ai_summary || 'No summary available.'}</div>
+      </div>
+    `;
+    openModal('Email Details', html);
+  } catch(err) { console.error(err); }
+}
+
+
+// ── Loaders ──
 async function loadStats() {
   try {
     const res = await fetch(API + '/stats');
@@ -451,9 +651,7 @@ async function loadStats() {
       <div class="stat-card accent"><div class="val">${d.emailsSent ?? 0}</div><div class="lbl">Emails Sent</div></div>
       <div class="stat-card gold"><div class="val">${d.pendingAlerts ?? 0}</div><div class="lbl">Pending Alerts</div></div>
     `;
-  } catch(e) {
-    console.error('Stats error:', e);
-  }
+  } catch(e) { console.error(e); }
 }
 
 async function loadState() {
@@ -463,40 +661,29 @@ async function loadState() {
     document.getElementById('state-count').textContent = data.length + ' symbols';
 
     if (!data.length) {
-      document.getElementById('market-grid').innerHTML =
-        '<div style="padding:40px;color:var(--muted);text-align:center;grid-column:1/-1;">No market data yet — engine is initializing.</div>';
+      document.getElementById('market-grid').innerHTML = '<div style="padding:40px;color:var(--muted);text-align:center;grid-column:1/-1;">No market data yet — engine is initializing.</div>';
       return;
     }
 
     document.getElementById('market-grid').innerHTML = data.map(s => {
       const trendClass = s.trend === 'BULLISH' ? 'bull' : s.trend === 'BEARISH' ? 'bear' : 'neutral';
       return `
-        <div class="market-card">
+        <div class="market-card" onclick="window.open('${tvUrl(s.ticker)}', '_blank')">
           <div class="ticker">
-            <a href="${tvUrl(s.ticker)}" target="_blank" title="Open on TradingView">${s.ticker}</a>
+            <span>${s.ticker}</span>
             <span class="trend-pill ${trendClass}">${s.trend || 'NEUTRAL'}</span>
           </div>
           <div class="price-row">
-            <div class="price-item">
-              <span class="key">Last BOS</span>
-              <span class="pval">${formatPrice(s.lastBos)}</span>
-            </div>
-            <div class="price-item">
-              <span class="key">Last CHOCH</span>
-              <span class="pval">${formatPrice(s.lastChoch)}</span>
-            </div>
+            <div class="price-item"><span class="key">Last BOS</span><span class="pval">${formatPrice(s.lastBos)}</span></div>
+            <div class="price-item"><span class="key">Last CHOCH</span><span class="pval">${formatPrice(s.lastChoch)}</span></div>
           </div>
           <div class="updated">${timeAgo(s.lastEventAt)}</div>
         </div>`;
     }).join('');
-  } catch(e) {
-    console.error('State error:', e);
-  }
+  } catch(e) { console.error(e); }
 }
 
-let currentFilter = 'today';
-
-async function loadAlerts(filter) {
+async function fetchAlerts(filter) {
   currentFilter = filter || currentFilter;
   try {
     let since = 0;
@@ -506,78 +693,95 @@ async function loadAlerts(filter) {
     else if (currentFilter === 'week') since = now - 7 * 86400000;
 
     const url = currentFilter === 'all'
-      ? API + '/alerts?limit=500'
-      : API + '/alerts?since=' + since + '&limit=500';
+      ? API + '/alerts?limit=1000'
+      : API + '/alerts?since=' + since + '&limit=1000';
 
     const res = await fetch(url);
-    const data = await res.json();
-    document.getElementById('alerts-count').textContent = data.length + ' events';
-
-    const tbody = document.getElementById('alerts-body');
-    if (!data.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">No events found for this period.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = data.map(a => {
-      const dirClass = a.direction === 'BULLISH' ? 'bull-text' : 'bear-text';
-      const statusEl = a.status === 'sent'
-        ? `<span class="status-sent">SENT</span>`
-        : a.status === 'pending'
-        ? `<span class="status-pending">PENDING</span>`
-        : `<span class="status-failed">FAILED</span>`;
-      return `
-        <tr>
-          <td class="muted-text">${formatDateTime(a.created_at)}</td>
-          <td><strong>${a.ticker}</strong></td>
-          <td>${a.event_type}</td>
-          <td class="${dirClass}">${a.direction}</td>
-          <td>${formatPrice(a.price)}</td>
-          <td class="muted-text">${formatPrice(a.pivot_level)}</td>
-          <td>${statusEl}</td>
-          <td><a class="tv-link" href="${tvUrl(a.ticker)}" target="_blank">↗ Chart</a></td>
-        </tr>`;
-    }).join('');
-  } catch(e) {
-    console.error('Alerts error:', e);
-  }
+    alertsData = await res.json();
+    currentAlertPage = 1;
+    renderAlerts();
+  } catch(e) { console.error(e); }
 }
 
-async function loadEmails() {
+function renderAlerts() {
+  const total = alertsData.length;
+  document.getElementById('alerts-count').textContent = total + ' events';
+  const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
+  const start = (currentAlertPage - 1) * PAGE_SIZE;
+  const pageData = alertsData.slice(start, start + PAGE_SIZE);
+
+  document.getElementById('alerts-page-info').textContent = \`Page \${currentAlertPage} of \${totalPages}\`;
+  document.getElementById('alerts-prev').disabled = currentAlertPage === 1;
+  document.getElementById('alerts-next').disabled = currentAlertPage === totalPages;
+
+  const tbody = document.getElementById('alerts-body');
+  if (!total) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="8">No events found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = pageData.map(a => {
+    const dirClass = a.direction === 'BULLISH' ? 'bull-text' : 'bear-text';
+    const statusEl = a.status === 'sent' ? `<span class="status-sent">SENT</span>`
+      : a.status === 'pending' ? `<span class="status-pending">PENDING</span>` : `<span class="status-failed">FAILED</span>`;
+    return `
+      <tr class="clickable" onclick="viewAlert(${a.id})">
+        <td class="muted-text">${formatDateTime(a.created_at)}</td>
+        <td><strong>${a.ticker}</strong></td>
+        <td>${a.event_type}</td>
+        <td class="${dirClass}">${a.direction}</td>
+        <td>${formatPrice(a.price)}</td>
+        <td class="muted-text">${formatPrice(a.pivot_level)}</td>
+        <td>${statusEl}</td>
+        <td><a class="tv-link" href="${tvUrl(a.ticker)}" target="_blank" onclick="event.stopPropagation()">↗ Chart</a></td>
+      </tr>`;
+  }).join('');
+}
+function changeAlertPage(dir) {
+  currentAlertPage += dir;
+  renderAlerts();
+}
+
+async function fetchEmails() {
   try {
-    const res = await fetch(API + '/emails?limit=50');
-    const data = await res.json();
-    document.getElementById('emails-count').textContent = data.length + ' emails';
-
-    const tbody = document.getElementById('emails-body');
-    if (!data.length) {
-      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No emails sent yet.</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = data.map(e => {
-      const statusEl = e.status === 'sent'
-        ? `<span class="status-sent">DELIVERED</span>`
-        : `<span class="status-failed">FAILED</span>`;
-      const summary = e.ai_summary
-        ? e.ai_summary.substring(0, 120) + (e.ai_summary.length > 120 ? '…' : '')
-        : '—';
-      return `
-        <tr>
-          <td class="muted-text">${formatDateTime(e.sent_at)}</td>
-          <td><strong>${e.alert_count}</strong> alert${e.alert_count > 1 ? 's' : ''}</td>
-          <td style="max-width:400px;white-space:normal;font-size:12px;color:var(--neutral)">${summary}</td>
-          <td>${statusEl}</td>
-        </tr>`;
-    }).join('');
-  } catch(e) {
-    console.error('Emails error:', e);
-  }
+    const res = await fetch(API + '/emails?limit=200');
+    emailsData = await res.json();
+    currentEmailPage = 1;
+    renderEmails();
+  } catch(e) { console.error(e); }
 }
+function renderEmails() {
+  const total = emailsData.length;
+  document.getElementById('emails-count').textContent = total + ' emails';
+  const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
+  const start = (currentEmailPage - 1) * PAGE_SIZE;
+  const pageData = emailsData.slice(start, start + PAGE_SIZE);
 
-async function loadAll() {
-  await Promise.all([loadStats(), loadState(), loadAlerts(), loadEmails()]);
-  document.getElementById('last-updated').textContent = 'Updated ' + new Date().toISOString().substring(11,19) + ' UTC';
+  document.getElementById('emails-page-info').textContent = \`Page \${currentEmailPage} of \${totalPages}\`;
+  document.getElementById('emails-prev').disabled = currentEmailPage === 1;
+  document.getElementById('emails-next').disabled = currentEmailPage === totalPages;
+
+  const tbody = document.getElementById('emails-body');
+  if (!total) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No emails sent yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = pageData.map(e => {
+    const statusEl = e.status === 'sent' ? `<span class="status-sent">DELIVERED</span>` : `<span class="status-failed">FAILED</span>`;
+    const summary = e.ai_summary ? e.ai_summary.substring(0, 120) + (e.ai_summary.length > 120 ? '…' : '') : '—';
+    return `
+      <tr class="clickable" onclick="viewEmail(${e.id})">
+        <td class="muted-text">${formatDateTime(e.sent_at)}</td>
+        <td><strong>${e.alert_count}</strong> alert${e.alert_count > 1 ? 's' : ''}</td>
+        <td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:var(--neutral)">${summary}</td>
+        <td>${statusEl}</td>
+      </tr>`;
+  }).join('');
+}
+function changeEmailPage(dir) {
+  currentEmailPage += dir;
+  renderEmails();
 }
 
 // Filter buttons
@@ -585,13 +789,76 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    loadAlerts(btn.dataset.filter);
+    fetchAlerts(btn.dataset.filter);
   });
 });
 
-// Initial load + auto-refresh every 60s
+async function loadAll() {
+  await Promise.all([loadStats(), loadState(), fetchAlerts(), fetchEmails()]);
+  document.getElementById('last-updated').textContent = 'Updated ' + new Date().toISOString().substring(11,19) + ' UTC';
+  initLatestTimestamp();
+}
+
+// ── Notifications ──
+function enableNotifications() {
+  if (!("Notification" in window)) {
+    alert("This browser does not support desktop notification");
+    return;
+  }
+  Notification.requestPermission().then(permission => {
+    if (permission === "granted") {
+      document.getElementById('notify-btn').style.display = 'none';
+      alert("Push notifications enabled! You will be notified when a new setup occurs.");
+    }
+  });
+}
+if (Notification.permission === 'granted') {
+  document.getElementById('notify-btn').style.display = 'none';
+}
+
+async function initLatestTimestamp() {
+  try {
+    const res = await fetch(API + '/latest');
+    const data = await res.json();
+    lastPolledTimestamp = data.timestamp;
+  } catch(e) {}
+}
+
+async function pollForNewAlerts() {
+  if (Notification.permission !== 'granted' || !lastPolledTimestamp) return;
+  try {
+    const res = await fetch(API + '/latest');
+    const data = await res.json();
+    if (data.timestamp && data.timestamp > lastPolledTimestamp) {
+      lastPolledTimestamp = data.timestamp;
+      
+      // Fetch the actual newest alerts to show in notification
+      const alertRes = await fetch(API + '/alerts?limit=1');
+      const latestAlerts = await alertRes.json();
+      if (latestAlerts.length > 0) {
+        const a = latestAlerts[0];
+        const title = `🚨 ${a.direction} ${a.event_type} on ${a.ticker}`;
+        const options = {
+          body: `Price: ${formatPrice(a.price)}\nPivot Level: ${formatPrice(a.pivot_level)}`,
+          icon: '/favicon.ico',
+        };
+        const n = new Notification(title, options);
+        n.onclick = () => { window.focus(); };
+      }
+      // Refresh dashboard to show the new alert
+      loadAll();
+    }
+  } catch (e) {}
+}
+
+// Initial load + auto-refresh
 loadAll();
-setInterval(loadAll, 60000);
+setInterval(() => {
+  loadStats();
+  loadState();
+}, 60000);
+setInterval(pollForNewAlerts, 10000); // Check for new alerts every 10 seconds
+
 </script>
 </body>
 </html>

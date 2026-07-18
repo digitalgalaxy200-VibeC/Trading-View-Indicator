@@ -74,22 +74,19 @@ INSERT OR IGNORE INTO notification_config (id) VALUES (1);
 `;
 
 const DEFAULT_SYMBOLS: { ticker: string; label: string }[] = [
-  { ticker: 'R_100',    label: 'Volatility 100 Index' },
-  { ticker: 'R_75',     label: 'Volatility 75 Index' },
-  { ticker: 'R_50',     label: 'Volatility 50 Index' },
-  { ticker: 'R_25',     label: 'Volatility 25 Index' },
-  { ticker: 'R_10',     label: 'Volatility 10 Index' },
-  { ticker: '1HZ100V',  label: 'Volatility 100 (1s)' },
-  { ticker: '1HZ75V',   label: 'Volatility 75 (1s)' },
-  { ticker: '1HZ50V',   label: 'Volatility 50 (1s)' },
-  { ticker: '1HZ30V',   label: 'Volatility 30 (1s)' },
-  { ticker: '1HZ25V',   label: 'Volatility 25 (1s)' },
-  { ticker: '1HZ15V',   label: 'Volatility 15 (1s)' },
-  { ticker: '1HZ10V',   label: 'Volatility 10 (1s)' },
-  { ticker: 'BOOM1000', label: 'Boom 1000 Index' },
-  { ticker: 'BOOM500',  label: 'Boom 500 Index' },
-  { ticker: 'CRASH1000',label: 'Crash 1000 Index' },
-  { ticker: 'CRASH500', label: 'Crash 500 Index' },
+  // Standard Volatility Indices
+  { ticker: 'R_75',    label: 'Volatility 75 Index' },
+  { ticker: 'R_50',    label: 'Volatility 50 Index' },
+  { ticker: 'R_25',    label: 'Volatility 25 Index' },
+  { ticker: 'R_10',    label: 'Volatility 10 Index' },
+  // 1-Second Volatility Indices
+  { ticker: '1HZ100V', label: 'Volatility 100 (1s) Index' },
+  { ticker: '1HZ75V',  label: 'Volatility 75 (1s) Index' },
+  { ticker: '1HZ50V',  label: 'Volatility 50 (1s) Index' },
+  { ticker: '1HZ30V',  label: 'Volatility 30 (1s) Index' },
+  { ticker: '1HZ25V',  label: 'Volatility 25 (1s) Index' },
+  { ticker: '1HZ15V',  label: 'Volatility 15 (1s) Index' },
+  { ticker: '1HZ10V',  label: 'Volatility 10 (1s) Index' },
 ];
 
 export function initializeDatabase(): void {
