@@ -1,42 +1,34 @@
-import { Resend } from 'resend';
-import { config } from '../config/env';
-import { BreakoutEvent } from '../types';
-
-export class NotificationService {
-  private static resend = new Resend(config.resendApiKey);
-
-  public static async sendAlert(symbol: string, event: BreakoutEvent, aiAnalysis: string) {
-    if (!config.resendApiKey || !config.emailFrom || !config.emailTo) {
-      console.warn(`[${symbol}] Email configuration missing. Skipping notification.`);
-      return;
-    }
-
-    const isBullish = event.direction === 'BULLISH';
-    const isCHoCH = event.event.includes('CHoCH');
-    const structureStatus = event.trendBefore === event.trendAfter ? 'Continuation' : 'Reversal';
-    const accentColor = isBullish ? '#089981' : '#F23645';
-    const badgeColor = isCHoCH ? '#f59e0b' : (isBullish ? '#089981' : '#F23645');
-    const directionArrow = isBullish ? '▲' : '▼';
-
-    const timeframeLabel =
-      config.timeframe === 900 ? '15 Minutes' :
-      config.timeframe === 300 ? '5 Minutes' :
-      config.timeframe === 60  ? '1 Minute'  :
-      `${config.timeframe}s`;
-
-    const signalTime = new Date(event.epoch * 1000).toUTCString();
-
-    // TradingView deep link — opens the symbol on Deriv's TradingView chart
-    const tvUrl = `https://www.tradingview.com/chart/?symbol=DERIV:${symbol}`;
-
-    // Format AI sections into nice HTML blocks
-    const formattedAI = aiAnalysis
-      .replace(/\*\*(.+?)\*\*/g, '<strong style="color:#1a1a2e;display:block;margin-top:14px;margin-bottom:4px;font-size:13px;text-transform:uppercase;letter-spacing:0.05em;">$1</strong>')
-      .replace(/\n/g, '<br>');
-
-    const subject = `${isBullish ? '🟢' : '🔴'} [${symbol}] ${event.event} Detected — ${timeframeLabel}`;
-
-    const htmlBody = `
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.NotificationService = void 0;
+const resend_1 = require("resend");
+const env_1 = require("../config/env");
+class NotificationService {
+    static resend = new resend_1.Resend(env_1.config.resendApiKey);
+    static async sendAlert(symbol, event, aiAnalysis) {
+        if (!env_1.config.resendApiKey || !env_1.config.emailFrom || !env_1.config.emailTo) {
+            console.warn(`[${symbol}] Email configuration missing. Skipping notification.`);
+            return;
+        }
+        const isBullish = event.direction === 'BULLISH';
+        const isCHoCH = event.event.includes('CHoCH');
+        const structureStatus = event.trendBefore === event.trendAfter ? 'Continuation' : 'Reversal';
+        const accentColor = isBullish ? '#089981' : '#F23645';
+        const badgeColor = isCHoCH ? '#f59e0b' : (isBullish ? '#089981' : '#F23645');
+        const directionArrow = isBullish ? '▲' : '▼';
+        const timeframeLabel = env_1.config.timeframe === 900 ? '15 Minutes' :
+            env_1.config.timeframe === 300 ? '5 Minutes' :
+                env_1.config.timeframe === 60 ? '1 Minute' :
+                    `${env_1.config.timeframe}s`;
+        const signalTime = new Date(event.epoch * 1000).toUTCString();
+        // TradingView deep link — opens the symbol on Deriv's TradingView chart
+        const tvUrl = `https://www.tradingview.com/chart/?symbol=DERIV:${symbol}`;
+        // Format AI sections into nice HTML blocks
+        const formattedAI = aiAnalysis
+            .replace(/\*\*(.+?)\*\*/g, '<strong style="color:#1a1a2e;display:block;margin-top:14px;margin-bottom:4px;font-size:13px;text-transform:uppercase;letter-spacing:0.05em;">$1</strong>')
+            .replace(/\n/g, '<br>');
+        const subject = `${isBullish ? '🟢' : '🔴'} [${symbol}] ${event.event} Detected — ${timeframeLabel}`;
+        const htmlBody = `
 <!DOCTYPE html>
 <html>
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
@@ -157,23 +149,22 @@ export class NotificationService {
 
 </body>
 </html>`;
-
-    try {
-      console.log(`[${symbol}] Dispatching email alert via Resend...`);
-      const { data, error } = await this.resend.emails.send({
-        from: config.emailFrom,
-        to: [config.emailTo],
-        subject: subject,
-        html: htmlBody
-      });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      console.log(`[${symbol}] ✅ Alert email sent successfully. ID: ${data?.id}`);
-    } catch (e: any) {
-      console.error(`[${symbol}] Failed to send email: ${e.message}`);
+        try {
+            console.log(`[${symbol}] Dispatching email alert via Resend...`);
+            const { data, error } = await this.resend.emails.send({
+                from: env_1.config.emailFrom,
+                to: [env_1.config.emailTo],
+                subject: subject,
+                html: htmlBody
+            });
+            if (error) {
+                throw new Error(error.message);
+            }
+            console.log(`[${symbol}] ✅ Alert email sent successfully. ID: ${data?.id}`);
+        }
+        catch (e) {
+            console.error(`[${symbol}] Failed to send email: ${e.message}`);
+        }
     }
-  }
 }
+exports.NotificationService = NotificationService;

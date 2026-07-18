@@ -47,6 +47,8 @@ export class BreakoutDetector {
         trendBefore: trendBefore,
         trendAfter: 'BULLISH',
         pivotLevel: activeSwingHigh,
+        previousSwingPrice: activeSwingLow || activeSwingHigh,
+        distanceFromPivot: Math.abs(close - activeSwingHigh),
         epoch: candle.epoch
       };
     }
@@ -66,6 +68,8 @@ export class BreakoutDetector {
         trendBefore: trendBefore,
         trendAfter: 'BEARISH',
         pivotLevel: activeSwingLow,
+        previousSwingPrice: activeSwingHigh || activeSwingLow,
+        distanceFromPivot: Math.abs(close - activeSwingLow),
         epoch: candle.epoch
       };
     }

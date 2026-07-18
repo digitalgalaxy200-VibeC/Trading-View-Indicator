@@ -25,5 +25,7 @@ export interface BreakoutEvent {
   trendBefore: Trend;
   trendAfter: Trend;
   pivotLevel: number;
+  previousSwingPrice: number;
+  distanceFromPivot: number;
   epoch: number;
 }

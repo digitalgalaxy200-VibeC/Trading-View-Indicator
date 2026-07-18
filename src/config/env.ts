@@ -9,7 +9,7 @@ export const config = {
   
   // Trading Settings
   symbols: (process.env.SYMBOLS || 'R_100').split(',').map(s => s.trim()),
-  timeframe: parseInt(process.env.TIMEFRAME || '60', 10),
+  timeframe: parseInt(process.env.TIMEFRAME || '900', 10),
   pivotLength: parseInt(process.env.PIVOT_LENGTH || '50', 10),
   
   // External APIs
