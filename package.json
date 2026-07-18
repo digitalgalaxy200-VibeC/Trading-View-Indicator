@@ -1,0 +1,15 @@
+{
+  "name": "ai-trend-continuation-assistant",
+  "version": "1.0.0",
+  "description": "AI-powered SMC trading assistant — explains market structure events via Telegram",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "vercel --prod",
+    "deploy:preview": "vercel"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
