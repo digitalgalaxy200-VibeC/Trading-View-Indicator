@@ -1,85 +1,71 @@
 import { config } from '../config/env';
-import { BreakoutEvent } from '../types';
+import { AlertWithDetails } from '../types';
+
+const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
+
+const SYSTEM_PROMPT = `You are a professional Smart Money Concepts (SMC) market structure analyst.
+You summarise multiple market events concisely for a trader who is at work and will manually review charts.
+
+CRITICAL RULES:
+- NEVER recommend buying, selling, or trading.
+- NEVER give entry points, stop losses, or take profits.
+- NEVER predict future price movements.
+- Keep your summary under 200 words.
+- End with: "The final trading decision belongs entirely to the user."`;
 
 export class DeepSeekClient {
-  public static async analyzeEvent(symbol: string, event: BreakoutEvent): Promise<string> {
-    if (!config.deepseekApiKey) {
-      console.warn('DEEPSEEK_API_KEY missing. Skipping AI analysis.');
-      return 'AI analysis skipped due to missing API key.';
-    }
+  static async analyzeEvent(symbol: string, event: any): Promise<string> {
+    // Kept for backward compat — single-event analysis is no longer the primary path
+    const alerts: AlertWithDetails[] = [{
+      ticker: symbol,
+      event_type: event.event.includes('CHOCH') ? 'CHOCH' : 'BOS',
+      direction: event.direction,
+      price: event.price,
+      trend_before: event.trendBefore,
+      trend_after: event.trendAfter,
+      pivot_level: event.pivotLevel,
+      candle_epoch: event.candleEpoch,
+    } as AlertWithDetails];
+    return DeepSeekClient.summarizeBatch(alerts);
+  }
 
-    const systemPrompt =
-      'You are a professional Smart Money Concepts (SMC) market structure analyst.\n' +
-      'You write structured, factual briefings for traders who make their own decisions.\n\n' +
-      'STRICT RULES — you must follow these without exception:\n' +
-      '- You NEVER recommend buying, selling, going long, or going short.\n' +
-      '- You NEVER provide entry prices, stop-loss levels, or take-profit targets.\n' +
-      '- You NEVER predict future price direction.\n' +
-      '- You NEVER suggest position sizes or risk percentages.\n' +
-      '- You ONLY describe and explain what has already happened in the market structure.\n\n' +
-      'Your response MUST follow this exact 5-section structure:\n' +
-      '**WHAT HAPPENED**\n(1-2 sentences describing the confirmed event)\n\n' +
-      '**WHY IT MATTERS**\n(1-2 sentences on the structural significance of this event)\n\n' +
-      '**MARKET CONTEXT**\n(1-2 sentences describing the market state before and after this event)\n\n' +
-      '**STRUCTURAL CONFLUENCE**\n(1-2 sentences noting whether this is a continuation or a reversal of the prior trend)\n\n' +
-      '**WHAT TO WATCH NEXT**\n(1-2 sentences on what structural levels or events traders should observe — informational only)\n\n' +
-      'End every response with exactly this line:\n' +
-      '"The final trading decision belongs entirely to the user."';
-
-    const timeframeLabel = config.timeframe === 900 ? '15 Minutes' :
-      config.timeframe === 300 ? '5 Minutes' :
-      config.timeframe === 60 ? '1 Minute' :
-      `${config.timeframe}s`;
-
-    const structureStatus = event.trendBefore === event.trendAfter ? 'Continuation' : 'Reversal';
+  static async summarizeBatch(alerts: AlertWithDetails[]): Promise<string> {
+    const alertList = alerts.map(a =>
+      `${a.ticker} — ${a.direction === 'BULLISH' ? 'Bullish' : 'Bearish'} ${a.event_type} at ${a.price}\n` +
+      `  Trend: ${a.trend_before} → ${a.trend_after}`
+    ).join('\n\n');
 
     const userPrompt =
-      `A confirmed ${event.direction} ${event.event} has been detected. Produce a structured market briefing.\n\n` +
-      `Symbol:                 ${symbol}\n` +
-      `Timeframe:              ${timeframeLabel}\n` +
-      `Event Type:             ${event.event}\n` +
-      `Structure Status:       ${structureStatus} (${event.trendBefore} → ${event.trendAfter})\n` +
-      `Price at Signal:        ${event.price}\n` +
-      `Broken Pivot Level:     ${event.pivotLevel}\n` +
-      `Previous Swing Price:   ${event.previousSwingPrice}\n` +
-      `Distance from Pivot:    ${event.distanceFromPivot.toFixed(2)} points\n\n` +
-      'Produce the 5-section briefing now. Follow the format exactly.';
+      `The following market structure events were confirmed in the last batch window:\n\n${alertList}\n\n` +
+      `Provide a concise market summary for a trader who will manually review the charts.`;
 
-    const requestBody = {
-      model: 'deepseek-chat',
-      temperature: 0.3,
-      max_tokens: 500,
+    const body = {
+      model: config.deepseekModel,
+      temperature: config.deepseekTemperature,
+      max_tokens: config.deepseekMaxTokens,
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ]
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userPrompt },
+      ],
     };
 
-    try {
-      console.log(`[${symbol}] Requesting DeepSeek analysis for ${event.event}...`);
-      const response = await fetch('https://api.deepseek.com/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.deepseekApiKey}`
-        },
-        body: JSON.stringify(requestBody)
-      });
+    const response = await fetch(DEEPSEEK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.deepseekApiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`HTTP ${response.status} - ${errText}`);
-      }
-
-      const json = await response.json();
-      if (json.choices && json.choices.length > 0) {
-        return json.choices[0].message.content.trim();
-      }
-      
-      return 'AI returned empty response.';
-    } catch (error: any) {
-      console.error(`[${symbol}] DeepSeek API Error:`, error.message);
-      return `⚠️ AI analysis failed: ${error.message}`;
+    if (!response.ok) {
+      const err = await response.text().catch(() => '');
+      console.error(`DeepSeek API error (${response.status}): ${err.substring(0, 200)}`);
+      return '⚠️ AI summary unavailable — please review charts manually.';
     }
+
+    const data = await response.json() as any;
+    const content = data.choices?.[0]?.message?.content?.trim();
+    return content || '⚠️ AI returned no content.';
   }
 }

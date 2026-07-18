@@ -1,28 +1,29 @@
 {
   "name": "ai-trend-continuation-assistant",
-  "version": "1.0.0",
-  "description": "AI-powered SMC trading assistant — explains market structure events via Telegram",
+  "version": "2.0.0",
+  "description": "AI-powered SMC trading assistant — market structure engine with batched notifications",
   "private": true,
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc",
-    "start": "node dist/index.js",
-    "deploy": "vercel --prod",
-    "deploy:preview": "vercel"
+    "start": "node dist/index.js"
   },
   "dependencies": {
+    "better-sqlite3": "^11.7.0",
     "dotenv": "^17.4.2",
+    "express": "^4.21.0",
     "resend": "^6.17.2",
-    "ts-node": "^10.9.2",
-    "tsx": "^4.23.1",
-    "typescript": "^7.0.2",
     "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/express": "^5.0.0",
+    "@types/ws": "^8.18.1",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.23.1",
+    "typescript": "^5.7.0"
   },
   "engines": {
     "node": ">=20.0.0"
-  },
-  "devDependencies": {
-    "@types/node": "^26.1.1",
-    "@types/ws": "^8.18.1"
   }
 }

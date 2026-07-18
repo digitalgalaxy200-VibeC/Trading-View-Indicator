@@ -1,64 +1,79 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const env_1 = require("./config/env");
+const schema_1 = require("./db/schema");
+const symbolRepository_1 = require("./db/symbolRepository");
+const eventRepository_1 = require("./db/eventRepository");
+const marketStateRepository_1 = require("./db/marketStateRepository");
 const derivClient_1 = require("./api/derivClient");
 const candleManager_1 = require("./engine/candleManager");
-const confirmationLayer_1 = require("./engine/confirmationLayer");
-const deepseekClient_1 = require("./api/deepseekClient");
-const notificationService_1 = require("./services/notificationService");
+const alertQueue_1 = require("./notification/alertQueue");
+const notificationEngine_1 = require("./notification/notificationEngine");
+const app_1 = require("./server/app");
 console.log('============================================');
-console.log('🚀 Multi-Symbol Market Structure Engine Starting...');
+console.log('🚀 Market Structure Engine v2 Starting...');
 console.log(`Tracking ${env_1.config.symbols.length} Symbols: ${env_1.config.symbols.join(', ')}`);
-console.log(`Timeframe: ${env_1.config.timeframe}s`);
-console.log(`Pivot Lookback: ${env_1.config.pivotLength} bars`);
+console.log(`Timeframe: ${env_1.config.timeframe}s | Pivot: ${env_1.config.pivotLength} bars`);
+console.log(`Notifications: every ${env_1.config.notificationCheckSeconds}s`);
 console.log('============================================');
+// ── Initialize database ──
+(0, schema_1.initializeDatabase)();
+// ── Shared Alert Queue ──
+const alertQueue = new alertQueue_1.AlertQueue();
+// ── Notification Engine ──
+const notificationEngine = new notificationEngine_1.NotificationEngine(alertQueue);
+notificationEngine.start();
+// ── Deriv WebSocket Client ──
 const derivClient = new derivClient_1.DerivClient();
-// The event handler is invoked by CandleManager when a newly closed candle causes a BOS/CHOCH.
-// The ConfirmationLayer then decides whether this event is significant enough to notify.
-const onEventDetected = async (symbol, confirmationLayer, event) => {
-    console.log(`\n📊 [${symbol}] Detected: ${event.direction} ${event.event} @ ${event.price} (Pivot: ${event.pivotLevel})`);
-    // Run through the confirmation filter
-    const shouldNotify = confirmationLayer.shouldNotify(event);
-    console.log(`[${symbol}] Confirmation state: ${confirmationLayer.getStateDescription()}`);
-    if (!shouldNotify) {
-        console.log(`[${symbol}] ⏸ Notification suppressed. Waiting for sequence confirmation.\n`);
+const onEventDetected = (symbol, rawEvent) => {
+    const event = { ...rawEvent, symbol };
+    console.log(`\n📊 [${symbol}] ${event.direction} ${event.event} @ ${event.price} (Pivot: ${event.pivotLevel})`);
+    const symbolId = symbolRepository_1.symbolRepository.getId(symbol);
+    if (!symbolId) {
+        console.error(`  Unknown symbol: ${symbol}`);
         return;
     }
-    console.log(`\n🔔 [${symbol}] CONFIRMED EVENT — sending notification.`);
-    // 1. Get AI Context
-    const aiAnalysis = await deepseekClient_1.DeepSeekClient.analyzeEvent(symbol, event);
-    console.log(`[${symbol}] AI Analysis complete.`);
-    // 2. Send Notification
-    await notificationService_1.NotificationService.sendAlert(symbol, event, aiAnalysis);
-    console.log(`[${symbol}] ✅ Event processing complete.\n`);
+    // Save event to database
+    const eventRow = eventRepository_1.eventRepository.insert(event, symbolId);
+    if (!eventRow) {
+        console.log(`  ⏭ Duplicate event suppressed.`);
+        return;
+    }
+    console.log(`  ✅ Event saved (ID: ${eventRow.id})`);
+    // Update market state
+    const isChoch = event.event.includes('CHOCH');
+    marketStateRepository_1.marketStateRepository.upsert(symbolId, event.trendAfter, event.price, isChoch);
+    // Enqueue alert for notification
+    alertQueue.enqueue(eventRow.id);
+    console.log(`  📬 Alert queued (pending: ${alertQueue.count()})`);
 };
-// Maintain a dedicated CandleManager AND ConfirmationLayer for each symbol
+// ── Create CandleManager per symbol ──
 const managers = new Map();
 for (const symbol of env_1.config.symbols) {
-    const confirmationLayer = new confirmationLayer_1.ConfirmationLayer();
-    managers.set(symbol, new candleManager_1.CandleManager((event) => onEventDetected(symbol, confirmationLayer, event)));
+    const manager = new candleManager_1.CandleManager((event) => onEventDetected(symbol, event));
+    managers.set(symbol, manager);
 }
-// Wire up the Deriv WebSocket streams to the respective CandleManagers
-derivClient.onHistory((symbol, historicalCandles) => {
+derivClient.onHistory((symbol, candles) => {
     const manager = managers.get(symbol);
-    if (manager) {
-        manager.initializeHistory(historicalCandles);
-    }
+    if (manager)
+        manager.initializeHistory(candles);
 });
-derivClient.onCandleClosed((symbol, closedCandle) => {
+derivClient.onCandleClosed((symbol, candle) => {
     const manager = managers.get(symbol);
-    if (manager) {
-        manager.onNewCandleClosed(closedCandle);
-    }
+    if (manager)
+        manager.onNewCandleClosed(candle);
 });
-// Start the WebSocket connection
 derivClient.connect();
-// Graceful shutdown handling
+// ── Dashboard Server ──
+(0, app_1.startServer)();
+// ── Graceful shutdown ──
 process.on('SIGINT', () => {
-    console.log('\nGracefully shutting down engine...');
+    console.log('\nShutting down...');
+    notificationEngine.stop();
     process.exit(0);
 });
 process.on('SIGTERM', () => {
-    console.log('\nGracefully shutting down engine...');
+    console.log('\nShutting down...');
+    notificationEngine.stop();
     process.exit(0);
 });

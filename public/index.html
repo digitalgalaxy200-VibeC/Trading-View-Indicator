@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Trend Assistant</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0f1729; color:#e2e8f0; padding:20px; }
+  h1 { font-size:20px; margin-bottom:20px; color:#fff; }
+  h2 { font-size:14px; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; margin:20px 0 10px; }
+  .stats { display:flex; gap:15px; margin-bottom:20px; flex-wrap:wrap; }
+  .stat-card { background:#1e293b; border-radius:8px; padding:15px 20px; min-width:120px; }
+  .stat-card .value { font-size:28px; font-weight:bold; color:#fff; }
+  .stat-card .label { font-size:12px; color:#94a3b8; margin-top:4px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; padding:8px 10px; background:#1e293b; color:#94a3b8; font-weight:600; position:sticky; top:0; }
+  td { padding:8px 10px; border-bottom:1px solid #1e293b; }
+  tr:hover { background:#1e293b; }
+  .bullish { color:#089981; font-weight:bold; }
+  .bearish { color:#F23645; font-weight:bold; }
+  a { color:#60a5fa; text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .section { margin-bottom:30px; }
+  .filter-bar { display:flex; gap:8px; margin-bottom:10px; }
+  .filter-bar button { background:#1e293b; color:#94a3b8; border:1px solid #334155; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:12px; }
+  .filter-bar button.active { background:#2962FF; color:#fff; border-color:#2962FF; }
+  .time { font-size:11px; color:#64748b; }
+  .refresh { font-size:11px; color:#64748b; text-align:right; margin-bottom:10px; }
+</style>
+</head>
+<body>
+<h1>📊 AI Trend Assistant</h1>
+
+<div class="stats" id="stats"></div>
+
+<div class="section">
+  <h2>Market State</h2>
+  <table id="state-table">
+    <thead><tr><th>Symbol</th><th>Trend</th><th>Last BOS</th><th>Last CHOCH</th><th>Updated</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h2>Alert History</h2>
+  <div class="filter-bar">
+    <button data-filter="today" class="active">Today</button>
+    <button data-filter="yesterday">Yesterday</button>
+    <button data-filter="week">This Week</button>
+    <button data-filter="all">All</button>
+  </div>
+  <table id="alerts-table">
+    <thead><tr><th>Time</th><th>Symbol</th><th>Event</th><th>Direction</th><th>Price</th><th>Status</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="section">
+  <h2>Email History</h2>
+  <table id="emails-table">
+    <thead><tr><th>Sent At</th><th>Alerts</th><th>Status</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div class="refresh" id="refresh">Auto-refresh: 60s</div>
+
+<script>
+const API = '/api';
+
+function formatTime(ms) {
+  if (!ms) return '—';
+  const d = new Date(ms);
+  return d.toISOString().replace('T',' ').substring(11,19);
+}
+function formatDate(ms) {
+  if (!ms) return '—';
+  return new Date(ms).toISOString().replace('T',' ').substring(0,16);
+}
+function timeAgo(ms) {
+  if (!ms) return '—';
+  const diff = Date.now() - ms;
+  if (diff < 60000) return 'just now';
+  const mins = Math.round(diff / 60000);
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.round(mins / 60);
+  return hrs + 'h ago';
+}
+
+async function loadState() {
+  const res = await fetch(API + '/state');
+  const data = await res.json();
+  const tbody = document.querySelector('#state-table tbody');
+  tbody.innerHTML = data.map(s => `
+    <tr>
+      <td><a href="${s.chartUrl}" target="_blank">${s.ticker}</a></td>
+      <td class="${s.trend === 'BULLISH' ? 'bullish' : s.trend === 'BEARISH' ? 'bearish' : ''}">${s.trend}</td>
+      <td>${s.lastBos ? s.lastBos.toLocaleString('en-US',{minimumFractionDigits:2}) : '—'}</td>
+      <td>${s.lastChoch ? s.lastChoch.toLocaleString('en-US',{minimumFractionDigits:2}) : '—'}</td>
+      <td class="time">${timeAgo(s.lastEventAt)}</td>
+    </tr>
+  `).join('');
+}
+
+async function loadStats() {
+  const res = await fetch(API + '/stats');
+  const data = await res.json();
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-card"><div class="value">${data.totalBos}</div><div class="label">Total BOS</div></div>
+    <div class="stat-card"><div class="value">${data.totalChoch}</div><div class="label">Total CHOCH</div></div>
+    <div class="stat-card"><div class="value">${data.bullishEvents}</div><div class="label">Bullish</div></div>
+    <div class="stat-card"><div class="value">${data.bearishEvents}</div><div class="label">Bearish</div></div>
+    <div class="stat-card"><div class="value">${data.emailsSent}</div><div class="label">Emails</div></div>
+    <div class="stat-card"><div class="value">${data.pendingAlerts}</div><div class="label">Pending</div></div>
+  `;
+}
+
+let currentFilter = 'today';
+
+async function loadAlerts(filter) {
+  currentFilter = filter;
+  let since = 0;
+  const now = Date.now();
+  if (filter === 'today') since = new Date().setHours(0,0,0,0);
+  else if (filter === 'yesterday') since = new Date(now - 86400000).setHours(0,0,0,0);
+  else if (filter === 'week') since = now - 7 * 86400000;
+
+  const url = filter === 'all'
+    ? API + '/alerts?limit=200'
+    : API + '/alerts?since=' + since;
+
+  const res = await fetch(url);
+  const data = await res.json();
+  const tbody = document.querySelector('#alerts-table tbody');
+  tbody.innerHTML = data.map(a => `
+    <tr>
+      <td class="time">${formatTime(a.created_at)}</td>
+      <td><a href="#" onclick="window.open('https://www.tradingview.com/chart/?symbol=SYNTH:${a.ticker}','_blank')">${a.ticker}</a></td>
+      <td>${a.event_type}</td>
+      <td class="${a.direction === 'BULLISH' ? 'bullish' : 'bearish'}">${a.direction}</td>
+      <td>${a.price.toLocaleString('en-US',{minimumFractionDigits:2})}</td>
+      <td>${a.status}</td>
+    </tr>
+  `).join('');
+}
+
+async function loadEmails() {
+  const res = await fetch(API + '/emails?limit=20');
+  const data = await res.json();
+  const tbody = document.querySelector('#emails-table tbody');
+  tbody.innerHTML = data.map(e => `
+    <tr>
+      <td class="time">${formatDate(e.sent_at)}</td>
+      <td>${e.alert_count}</td>
+      <td>${e.status}</td>
+    </tr>
+  `).join('');
+}
+
+async function loadAll() {
+  await Promise.all([loadState(), loadStats(), loadAlerts(currentFilter), loadEmails()]);
+}
+
+document.querySelectorAll('.filter-bar button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-bar button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadAlerts(btn.dataset.filter);
+  });
+});
+
+loadAll();
+setInterval(loadAll, 60000);
+</script>
+</body>
+</html>
