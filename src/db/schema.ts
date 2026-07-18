@@ -106,5 +106,20 @@ export function initializeDatabase(): void {
   );
   insertState.run();
 
-  console.log('Database initialized successfully.');
+  // Clean up any symbols not in DEFAULT_SYMBOLS (e.g., from old configurations)
+  const allowedTickers = DEFAULT_SYMBOLS.map(s => `'${s.ticker}'`).join(',');
+  const cleanupQueries = [
+    `DELETE FROM market_state WHERE symbol_id IN (SELECT id FROM symbols WHERE ticker NOT IN (${allowedTickers}))`,
+    `DELETE FROM alerts WHERE event_id IN (SELECT id FROM events WHERE symbol_id IN (SELECT id FROM symbols WHERE ticker NOT IN (${allowedTickers})))`,
+    `DELETE FROM events WHERE symbol_id IN (SELECT id FROM symbols WHERE ticker NOT IN (${allowedTickers}))`,
+    `DELETE FROM symbols WHERE ticker NOT IN (${allowedTickers})`
+  ];
+
+  db.transaction(() => {
+    for (const query of cleanupQueries) {
+      db.exec(query);
+    }
+  })();
+
+  console.log('Database initialized and cleaned successfully.');
 }
