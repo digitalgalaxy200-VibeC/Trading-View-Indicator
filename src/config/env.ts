@@ -17,7 +17,7 @@ export const config = {
     .split(',')
     .map(s => s.trim())
     .filter(Boolean),
-  timeframe: parseInt(optionalEnv('TIMEFRAME', '60'), 10),  // candle granularity in seconds
+  timeframe: parseInt(optionalEnv('TIMEFRAME', '900'), 10),  // candle granularity in seconds
   pivotLength: parseInt(optionalEnv('PIVOT_LENGTH', '50'), 10),
 
   // ── DeepSeek ──
