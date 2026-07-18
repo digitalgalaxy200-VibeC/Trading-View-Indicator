@@ -2,13 +2,13 @@ import WebSocket from 'ws';
 import { config } from '../config/env';
 import { Candle } from '../types';
 
-type CandleUpdateCallback = (historicalCandles: Candle[]) => void;
-type NewCandleClosedCallback = (closedCandle: Candle) => void;
+type CandleUpdateCallback = (symbol: string, historicalCandles: Candle[]) => void;
+type NewCandleClosedCallback = (symbol: string, closedCandle: Candle) => void;
 
 export class DerivClient {
   private ws: WebSocket | null = null;
-  private currentEpoch: number | null = null;
-  private latestCandle: Candle | null = null;
+  private currentEpochs: Map<string, number> = new Map();
+  private latestCandles: Map<string, Candle> = new Map();
   
   private onHistoryCallback: CandleUpdateCallback | null = null;
   private onClosedCallback: NewCandleClosedCallback | null = null;
@@ -50,17 +50,19 @@ export class DerivClient {
   private subscribeToCandles() {
     if (!this.ws) return;
     
-    const request = {
-      ticks_history: config.symbol,
-      style: 'candles',
-      granularity: config.timeframe,
-      count: 200, // Fetch the last 200 candles to build the initial structure state
-      end: 'latest',
-      subscribe: 1
-    };
+    for (const symbol of config.symbols) {
+      const request = {
+        ticks_history: symbol,
+        style: 'candles',
+        granularity: config.timeframe,
+        count: 200, // Fetch the last 200 candles to build the initial structure state
+        end: 'latest',
+        subscribe: 1
+      };
 
-    console.log(`Subscribing to candles for ${config.symbol} (TF: ${config.timeframe}s)...`);
-    this.ws.send(JSON.stringify(request));
+      console.log(`Subscribing to candles for ${symbol} (TF: ${config.timeframe}s)...`);
+      this.ws.send(JSON.stringify(request));
+    }
   }
 
   private handleMessage(response: any) {
@@ -71,6 +73,7 @@ export class DerivClient {
 
     // 1. Initial historical candles response
     if (response.msg_type === 'history' && response.candles) {
+      const symbol = response.echo_req.ticks_history;
       const history: Candle[] = response.candles.map((c: any) => ({
         epoch: c.epoch,
         open: parseFloat(c.open),
@@ -81,20 +84,22 @@ export class DerivClient {
 
       // The last candle in history is usually the currently forming (open) candle.
       // We will treat it as our tracked current candle.
-      this.latestCandle = history.pop() || null;
-      if (this.latestCandle) {
-        this.currentEpoch = this.latestCandle.epoch;
+      const latest = history.pop() || null;
+      if (latest) {
+        this.latestCandles.set(symbol, latest);
+        this.currentEpochs.set(symbol, latest.epoch);
       }
 
-      console.log(`Loaded ${history.length} historical closed candles.`);
+      console.log(`[${symbol}] Loaded ${history.length} historical closed candles.`);
       if (this.onHistoryCallback) {
-        this.onHistoryCallback(history);
+        this.onHistoryCallback(symbol, history);
       }
     }
 
     // 2. Real-time OHLC stream updates
     if (response.msg_type === 'ohlc' && response.ohlc) {
       const ohlc = response.ohlc;
+      const symbol = ohlc.symbol;
       const tickEpoch = ohlc.epoch;
       
       const updatedCandle: Candle = {
@@ -105,16 +110,19 @@ export class DerivClient {
         close: parseFloat(ohlc.close)
       };
 
+      const currentEpoch = this.currentEpochs.get(symbol);
+      const latestCandle = this.latestCandles.get(symbol);
+
       // If the epoch has changed, it means the previous candle has officially closed!
-      if (this.currentEpoch !== null && tickEpoch > this.currentEpoch) {
-        if (this.latestCandle && this.onClosedCallback) {
-          this.onClosedCallback(this.latestCandle);
+      if (currentEpoch !== undefined && tickEpoch > currentEpoch) {
+        if (latestCandle && this.onClosedCallback) {
+          this.onClosedCallback(symbol, latestCandle);
         }
       }
 
-      // Update our tracked latest candle
-      this.currentEpoch = tickEpoch;
-      this.latestCandle = updatedCandle;
+      // Update our tracked latest candle for this symbol
+      this.currentEpochs.set(symbol, tickEpoch);
+      this.latestCandles.set(symbol, updatedCandle);
     }
   }
 }

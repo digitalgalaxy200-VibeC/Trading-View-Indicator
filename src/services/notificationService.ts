@@ -3,20 +3,16 @@ import { config } from '../config/env';
 import { BreakoutEvent } from '../types';
 
 export class NotificationService {
-  private static resend: Resend | null = null;
+  private static resend = new Resend(config.resendApiKey);
 
-  public static async sendAlert(event: BreakoutEvent, aiAnalysis: string) {
+  public static async sendAlert(symbol: string, event: BreakoutEvent, aiAnalysis: string) {
     if (!config.resendApiKey || !config.emailFrom || !config.emailTo) {
       console.warn('Email configuration missing. Skipping email notification.');
       return;
     }
 
-    if (!this.resend) {
-      this.resend = new Resend(config.resendApiKey);
-    }
-
     const eventTime = new Date(event.epoch * 1000).toUTCString();
-    const subject = `[Deriv Engine] ${event.direction} ${event.event} on ${config.symbol}`;
+    const subject = `[Deriv Engine] ${event.direction} ${event.event} on ${symbol}`;
     
     const htmlBody = `
       <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
@@ -27,7 +23,7 @@ export class NotificationService {
         <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
           <tr style="border-bottom: 1px solid #eee;">
             <td style="padding: 8px 0; font-weight: bold; width: 30%;">Symbol:</td>
-            <td style="padding: 8px 0;">${config.symbol}</td>
+            <td style="padding: 8px 0;">${symbol}</td>
           </tr>
           <tr style="border-bottom: 1px solid #eee;">
             <td style="padding: 8px 0; font-weight: bold;">Timeframe:</td>

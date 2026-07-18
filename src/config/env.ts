@@ -8,7 +8,7 @@ export const config = {
   derivWsUrl: process.env.DERIV_WS_URL || 'wss://ws.binaryws.com/websockets/v3',
   
   // Trading Settings
-  symbol: process.env.SYMBOL || 'R_100',
+  symbols: (process.env.SYMBOLS || 'R_100').split(',').map(s => s.trim()),
   timeframe: parseInt(process.env.TIMEFRAME || '60', 10),
   pivotLength: parseInt(process.env.PIVOT_LENGTH || '50', 10),
   

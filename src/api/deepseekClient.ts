@@ -2,7 +2,7 @@ import { config } from '../config/env';
 import { BreakoutEvent } from '../types';
 
 export class DeepSeekClient {
-  public static async analyzeEvent(event: BreakoutEvent): Promise<string> {
+  public static async analyzeEvent(symbol: string, event: BreakoutEvent): Promise<string> {
     if (!config.deepseekApiKey) {
       console.warn('DEEPSEEK_API_KEY missing. Skipping AI analysis.');
       return 'AI analysis skipped due to missing API key.';
@@ -21,7 +21,7 @@ export class DeepSeekClient {
 
     const userPrompt = 
       `A ${event.direction} ${event.event} has been detected.\n\n` +
-      `Symbol:           ${config.symbol}\n` +
+      `Symbol:           ${symbol}\n` +
       `Timeframe:        ${config.timeframe} seconds\n` +
       `Price at signal:  ${event.price}\n` +
       `Trend before:     ${event.trendBefore}\n` +
