@@ -3,81 +3,420 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Trend Assistant</title>
+<title>AI Trend Assistant — Market Structure Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  :root {
+    --bg: #0a0e1a;
+    --bg2: #111827;
+    --bg3: #1a2235;
+    --border: #1e2d45;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #3b82f6;
+    --bull: #10b981;
+    --bear: #ef4444;
+    --neutral: #94a3b8;
+    --gold: #f59e0b;
+  }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; background:#0f1729; color:#e2e8f0; padding:20px; }
-  h1 { font-size:20px; margin-bottom:20px; color:#fff; }
-  h2 { font-size:14px; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; margin:20px 0 10px; }
-  .stats { display:flex; gap:15px; margin-bottom:20px; flex-wrap:wrap; }
-  .stat-card { background:#1e293b; border-radius:8px; padding:15px 20px; min-width:120px; }
-  .stat-card .value { font-size:28px; font-weight:bold; color:#fff; }
-  .stat-card .label { font-size:12px; color:#94a3b8; margin-top:4px; }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th { text-align:left; padding:8px 10px; background:#1e293b; color:#94a3b8; font-weight:600; position:sticky; top:0; }
-  td { padding:8px 10px; border-bottom:1px solid #1e293b; }
-  tr:hover { background:#1e293b; }
-  .bullish { color:#089981; font-weight:bold; }
-  .bearish { color:#F23645; font-weight:bold; }
-  a { color:#60a5fa; text-decoration:none; }
-  a:hover { text-decoration:underline; }
-  .section { margin-bottom:30px; }
-  .filter-bar { display:flex; gap:8px; margin-bottom:10px; }
-  .filter-bar button { background:#1e293b; color:#94a3b8; border:1px solid #334155; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:12px; }
-  .filter-bar button.active { background:#2962FF; color:#fff; border-color:#2962FF; }
-  .time { font-size:11px; color:#64748b; }
-  .refresh { font-size:11px; color:#64748b; text-align:right; margin-bottom:10px; }
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .logo span { color: var(--accent); }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--bull);
+    font-weight: 600;
+  }
+  .live-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--bull);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; }
+    50% { opacity:0.3; }
+  }
+  .refresh-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .refresh-btn:hover { color: var(--text); border-color: var(--accent); }
+
+  /* ── Layout ── */
+  main { padding: 24px; max-width: 1400px; margin: auto; }
+
+  /* ── Stats Row ── */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    transition: border-color 0.2s;
+  }
+  .stat-card:hover { border-color: var(--accent); }
+  .stat-card .val {
+    font-size: 30px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+  }
+  .stat-card .lbl {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .stat-card.bull .val { color: var(--bull); }
+  .stat-card.bear .val { color: var(--bear); }
+  .stat-card.accent .val { color: var(--accent); }
+  .stat-card.gold .val { color: var(--gold); }
+
+  /* ── Section ── */
+  .section {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--neutral);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .section-badge {
+    font-size: 11px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+
+  /* ── Market Grid ── */
+  .market-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 1px;
+    background: var(--border);
+  }
+  .market-card {
+    background: var(--bg2);
+    padding: 14px 16px;
+    transition: background 0.15s;
+    cursor: pointer;
+  }
+  .market-card:hover { background: var(--bg3); }
+  .market-card .ticker {
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .market-card .ticker a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .market-card .ticker a:hover { color: var(--accent); }
+  .trend-pill {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+  }
+  .trend-pill.bull { background: rgba(16,185,129,0.15); color: var(--bull); }
+  .trend-pill.bear { background: rgba(239,68,68,0.15); color: var(--bear); }
+  .trend-pill.neutral { background: rgba(148,163,184,0.1); color: var(--neutral); }
+  .market-card .price-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 6px;
+  }
+  .market-card .price-item {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+  }
+  .market-card .price-item .key { color: var(--muted); }
+  .market-card .price-item .pval { color: var(--text); font-weight: 500; }
+  .market-card .updated { font-size: 10px; color: var(--muted); margin-top: 6px; }
+
+  /* ── Filter Bar ── */
+  .filter-bar {
+    display: flex;
+    gap: 6px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg3);
+  }
+  .filter-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 5px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover { color: var(--text); }
+  .filter-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+
+  /* ── Table ── */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left;
+    padding: 10px 16px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  td {
+    padding: 11px 16px;
+    border-bottom: 1px solid rgba(30,45,69,0.5);
+    white-space: nowrap;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg3); }
+  .bull-text { color: var(--bull); font-weight: 600; }
+  .bear-text { color: var(--bear); font-weight: 600; }
+  .muted-text { color: var(--muted); font-size: 12px; }
+  .tv-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+    transition: opacity 0.15s;
+  }
+  .tv-link:hover { opacity: 0.8; text-decoration: underline; }
+  .status-sent {
+    font-size: 11px;
+    background: rgba(16,185,129,0.15);
+    color: var(--bull);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .status-failed {
+    font-size: 11px;
+    background: rgba(239,68,68,0.15);
+    color: var(--bear);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .status-pending {
+    font-size: 11px;
+    background: rgba(245,158,11,0.15);
+    color: var(--gold);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .empty-row td {
+    text-align: center;
+    padding: 40px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 20px;
+    color: var(--muted);
+    font-size: 11px;
+    border-top: 1px solid var(--border);
+    margin-top: 10px;
+  }
+
+  /* ── Loading skeleton ── */
+  .skeleton {
+    background: linear-gradient(90deg, var(--bg3) 25%, var(--border) 50%, var(--bg3) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 4px;
+    height: 14px;
+  }
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
 </style>
 </head>
 <body>
-<h1>📊 AI Trend Assistant</h1>
 
-<div class="stats" id="stats"></div>
-
-<div class="section">
-  <h2>Market State</h2>
-  <table id="state-table">
-    <thead><tr><th>Symbol</th><th>Trend</th><th>Last BOS</th><th>Last CHOCH</th><th>Updated</th></tr></thead>
-    <tbody></tbody>
-  </table>
-</div>
-
-<div class="section">
-  <h2>Alert History</h2>
-  <div class="filter-bar">
-    <button data-filter="today" class="active">Today</button>
-    <button data-filter="yesterday">Yesterday</button>
-    <button data-filter="week">This Week</button>
-    <button data-filter="all">All</button>
+<header>
+  <div class="logo">📊 AI Trend <span>Assistant</span></div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    <div id="last-updated" style="font-size:11px;color:var(--muted);">Loading...</div>
+    <button class="refresh-btn" onclick="loadAll()">⟳ Refresh</button>
   </div>
-  <table id="alerts-table">
-    <thead><tr><th>Time</th><th>Symbol</th><th>Event</th><th>Direction</th><th>Price</th><th>Status</th></tr></thead>
-    <tbody></tbody>
-  </table>
-</div>
+</header>
 
-<div class="section">
-  <h2>Email History</h2>
-  <table id="emails-table">
-    <thead><tr><th>Sent At</th><th>Alerts</th><th>Status</th></tr></thead>
-    <tbody></tbody>
-  </table>
-</div>
+<main>
 
-<div class="refresh" id="refresh">Auto-refresh: 60s</div>
+  <!-- Stats -->
+  <div class="stats-grid" id="stats">
+    <div class="stat-card"><div class="val skeleton">&nbsp;&nbsp;&nbsp;</div><div class="lbl">Total BOS</div></div>
+    <div class="stat-card"><div class="val skeleton">&nbsp;&nbsp;&nbsp;</div><div class="lbl">Total CHOCH</div></div>
+    <div class="stat-card"><div class="val skeleton">&nbsp;&nbsp;&nbsp;</div><div class="lbl">Bullish</div></div>
+    <div class="stat-card"><div class="val skeleton">&nbsp;&nbsp;&nbsp;</div><div class="lbl">Bearish</div></div>
+    <div class="stat-card"><div class="val skeleton">&nbsp;&nbsp;&nbsp;</div><div class="lbl">Emails Sent</div></div>
+    <div class="stat-card"><div class="val skeleton">&nbsp;&nbsp;&nbsp;</div><div class="lbl">Pending</div></div>
+  </div>
+
+  <!-- Market State -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Market State</div>
+      <div class="section-badge" id="state-count">—</div>
+    </div>
+    <div class="market-grid" id="market-grid">
+      <div style="padding:40px;color:var(--muted);text-align:center;grid-column:1/-1;">Loading market state...</div>
+    </div>
+  </div>
+
+  <!-- Alert History -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Alert History</div>
+      <div class="section-badge" id="alerts-count">—</div>
+    </div>
+    <div class="filter-bar">
+      <button class="filter-btn active" data-filter="today">Today</button>
+      <button class="filter-btn" data-filter="yesterday">Yesterday</button>
+      <button class="filter-btn" data-filter="week">This Week</button>
+      <button class="filter-btn" data-filter="all">All</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Symbol</th>
+            <th>Event</th>
+            <th>Direction</th>
+            <th>Price</th>
+            <th>Pivot Level</th>
+            <th>Status</th>
+            <th>Chart</th>
+          </tr>
+        </thead>
+        <tbody id="alerts-body">
+          <tr class="empty-row"><td colspan="8">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Email Log -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Email Notification Log</div>
+      <div class="section-badge" id="emails-count">—</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Sent At</th>
+            <th>Alerts Batched</th>
+            <th>AI Summary</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="emails-body">
+          <tr class="empty-row"><td colspan="4">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  AI Trend Assistant v2 — For informational purposes only. Not financial advice.<br>
+  Auto-refreshes every 60 seconds.
+</footer>
 
 <script>
 const API = '/api';
 
-function formatTime(ms) {
-  if (!ms) return '—';
-  const d = new Date(ms);
-  return d.toISOString().replace('T',' ').substring(11,19);
-}
-function formatDate(ms) {
-  if (!ms) return '—';
-  return new Date(ms).toISOString().replace('T',' ').substring(0,16);
-}
 function timeAgo(ms) {
   if (!ms) return '—';
   const diff = Date.now() - ms;
@@ -85,91 +424,172 @@ function timeAgo(ms) {
   const mins = Math.round(diff / 60000);
   if (mins < 60) return mins + 'm ago';
   const hrs = Math.round(mins / 60);
-  return hrs + 'h ago';
+  if (hrs < 24) return hrs + 'h ago';
+  return Math.round(hrs / 24) + 'd ago';
 }
-
-async function loadState() {
-  const res = await fetch(API + '/state');
-  const data = await res.json();
-  const tbody = document.querySelector('#state-table tbody');
-  tbody.innerHTML = data.map(s => `
-    <tr>
-      <td><a href="${s.chartUrl}" target="_blank">${s.ticker}</a></td>
-      <td class="${s.trend === 'BULLISH' ? 'bullish' : s.trend === 'BEARISH' ? 'bearish' : ''}">${s.trend}</td>
-      <td>${s.lastBos ? s.lastBos.toLocaleString('en-US',{minimumFractionDigits:2}) : '—'}</td>
-      <td>${s.lastChoch ? s.lastChoch.toLocaleString('en-US',{minimumFractionDigits:2}) : '—'}</td>
-      <td class="time">${timeAgo(s.lastEventAt)}</td>
-    </tr>
-  `).join('');
+function formatDateTime(ms) {
+  if (!ms) return '—';
+  return new Date(ms).toISOString().replace('T', ' ').substring(0, 16) + ' UTC';
+}
+function formatPrice(n) {
+  if (!n) return '—';
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 5 });
+}
+function tvUrl(ticker) {
+  return 'https://www.tradingview.com/chart/?symbol=DERIV:' + ticker;
 }
 
 async function loadStats() {
-  const res = await fetch(API + '/stats');
-  const data = await res.json();
-  document.getElementById('stats').innerHTML = `
-    <div class="stat-card"><div class="value">${data.totalBos}</div><div class="label">Total BOS</div></div>
-    <div class="stat-card"><div class="value">${data.totalChoch}</div><div class="label">Total CHOCH</div></div>
-    <div class="stat-card"><div class="value">${data.bullishEvents}</div><div class="label">Bullish</div></div>
-    <div class="stat-card"><div class="value">${data.bearishEvents}</div><div class="label">Bearish</div></div>
-    <div class="stat-card"><div class="value">${data.emailsSent}</div><div class="label">Emails</div></div>
-    <div class="stat-card"><div class="value">${data.pendingAlerts}</div><div class="label">Pending</div></div>
-  `;
+  try {
+    const res = await fetch(API + '/stats');
+    const d = await res.json();
+    document.getElementById('stats').innerHTML = `
+      <div class="stat-card"><div class="val">${d.totalBos ?? 0}</div><div class="lbl">Total BOS</div></div>
+      <div class="stat-card bull"><div class="val">${d.bullishEvents ?? 0}</div><div class="lbl">Bullish Events</div></div>
+      <div class="stat-card bear"><div class="val">${d.bearishEvents ?? 0}</div><div class="lbl">Bearish Events</div></div>
+      <div class="stat-card"><div class="val">${d.totalChoch ?? 0}</div><div class="lbl">Total CHOCH</div></div>
+      <div class="stat-card accent"><div class="val">${d.emailsSent ?? 0}</div><div class="lbl">Emails Sent</div></div>
+      <div class="stat-card gold"><div class="val">${d.pendingAlerts ?? 0}</div><div class="lbl">Pending Alerts</div></div>
+    `;
+  } catch(e) {
+    console.error('Stats error:', e);
+  }
+}
+
+async function loadState() {
+  try {
+    const res = await fetch(API + '/state');
+    const data = await res.json();
+    document.getElementById('state-count').textContent = data.length + ' symbols';
+
+    if (!data.length) {
+      document.getElementById('market-grid').innerHTML =
+        '<div style="padding:40px;color:var(--muted);text-align:center;grid-column:1/-1;">No market data yet — engine is initializing.</div>';
+      return;
+    }
+
+    document.getElementById('market-grid').innerHTML = data.map(s => {
+      const trendClass = s.trend === 'BULLISH' ? 'bull' : s.trend === 'BEARISH' ? 'bear' : 'neutral';
+      return `
+        <div class="market-card">
+          <div class="ticker">
+            <a href="${tvUrl(s.ticker)}" target="_blank" title="Open on TradingView">${s.ticker}</a>
+            <span class="trend-pill ${trendClass}">${s.trend || 'NEUTRAL'}</span>
+          </div>
+          <div class="price-row">
+            <div class="price-item">
+              <span class="key">Last BOS</span>
+              <span class="pval">${formatPrice(s.lastBos)}</span>
+            </div>
+            <div class="price-item">
+              <span class="key">Last CHOCH</span>
+              <span class="pval">${formatPrice(s.lastChoch)}</span>
+            </div>
+          </div>
+          <div class="updated">${timeAgo(s.lastEventAt)}</div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    console.error('State error:', e);
+  }
 }
 
 let currentFilter = 'today';
 
 async function loadAlerts(filter) {
-  currentFilter = filter;
-  let since = 0;
-  const now = Date.now();
-  if (filter === 'today') since = new Date().setHours(0,0,0,0);
-  else if (filter === 'yesterday') since = new Date(now - 86400000).setHours(0,0,0,0);
-  else if (filter === 'week') since = now - 7 * 86400000;
+  currentFilter = filter || currentFilter;
+  try {
+    let since = 0;
+    const now = Date.now();
+    if (currentFilter === 'today') since = new Date().setHours(0,0,0,0);
+    else if (currentFilter === 'yesterday') since = new Date(now - 86400000).setHours(0,0,0,0);
+    else if (currentFilter === 'week') since = now - 7 * 86400000;
 
-  const url = filter === 'all'
-    ? API + '/alerts?limit=200'
-    : API + '/alerts?since=' + since;
+    const url = currentFilter === 'all'
+      ? API + '/alerts?limit=500'
+      : API + '/alerts?since=' + since + '&limit=500';
 
-  const res = await fetch(url);
-  const data = await res.json();
-  const tbody = document.querySelector('#alerts-table tbody');
-  tbody.innerHTML = data.map(a => `
-    <tr>
-      <td class="time">${formatTime(a.created_at)}</td>
-      <td><a href="#" onclick="window.open('https://www.tradingview.com/chart/?symbol=SYNTH:${a.ticker}','_blank')">${a.ticker}</a></td>
-      <td>${a.event_type}</td>
-      <td class="${a.direction === 'BULLISH' ? 'bullish' : 'bearish'}">${a.direction}</td>
-      <td>${a.price.toLocaleString('en-US',{minimumFractionDigits:2})}</td>
-      <td>${a.status}</td>
-    </tr>
-  `).join('');
+    const res = await fetch(url);
+    const data = await res.json();
+    document.getElementById('alerts-count').textContent = data.length + ' events';
+
+    const tbody = document.getElementById('alerts-body');
+    if (!data.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="8">No events found for this period.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.map(a => {
+      const dirClass = a.direction === 'BULLISH' ? 'bull-text' : 'bear-text';
+      const statusEl = a.status === 'sent'
+        ? `<span class="status-sent">SENT</span>`
+        : a.status === 'pending'
+        ? `<span class="status-pending">PENDING</span>`
+        : `<span class="status-failed">FAILED</span>`;
+      return `
+        <tr>
+          <td class="muted-text">${formatDateTime(a.created_at)}</td>
+          <td><strong>${a.ticker}</strong></td>
+          <td>${a.event_type}</td>
+          <td class="${dirClass}">${a.direction}</td>
+          <td>${formatPrice(a.price)}</td>
+          <td class="muted-text">${formatPrice(a.pivot_level)}</td>
+          <td>${statusEl}</td>
+          <td><a class="tv-link" href="${tvUrl(a.ticker)}" target="_blank">↗ Chart</a></td>
+        </tr>`;
+    }).join('');
+  } catch(e) {
+    console.error('Alerts error:', e);
+  }
 }
 
 async function loadEmails() {
-  const res = await fetch(API + '/emails?limit=20');
-  const data = await res.json();
-  const tbody = document.querySelector('#emails-table tbody');
-  tbody.innerHTML = data.map(e => `
-    <tr>
-      <td class="time">${formatDate(e.sent_at)}</td>
-      <td>${e.alert_count}</td>
-      <td>${e.status}</td>
-    </tr>
-  `).join('');
+  try {
+    const res = await fetch(API + '/emails?limit=50');
+    const data = await res.json();
+    document.getElementById('emails-count').textContent = data.length + ' emails';
+
+    const tbody = document.getElementById('emails-body');
+    if (!data.length) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No emails sent yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.map(e => {
+      const statusEl = e.status === 'sent'
+        ? `<span class="status-sent">DELIVERED</span>`
+        : `<span class="status-failed">FAILED</span>`;
+      const summary = e.ai_summary
+        ? e.ai_summary.substring(0, 120) + (e.ai_summary.length > 120 ? '…' : '')
+        : '—';
+      return `
+        <tr>
+          <td class="muted-text">${formatDateTime(e.sent_at)}</td>
+          <td><strong>${e.alert_count}</strong> alert${e.alert_count > 1 ? 's' : ''}</td>
+          <td style="max-width:400px;white-space:normal;font-size:12px;color:var(--neutral)">${summary}</td>
+          <td>${statusEl}</td>
+        </tr>`;
+    }).join('');
+  } catch(e) {
+    console.error('Emails error:', e);
+  }
 }
 
 async function loadAll() {
-  await Promise.all([loadState(), loadStats(), loadAlerts(currentFilter), loadEmails()]);
+  await Promise.all([loadStats(), loadState(), loadAlerts(), loadEmails()]);
+  document.getElementById('last-updated').textContent = 'Updated ' + new Date().toISOString().substring(11,19) + ' UTC';
 }
 
-document.querySelectorAll('.filter-bar button').forEach(btn => {
+// Filter buttons
+document.querySelectorAll('.filter-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.filter-bar button').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     loadAlerts(btn.dataset.filter);
   });
 });
 
+// Initial load + auto-refresh every 60s
 loadAll();
 setInterval(loadAll, 60000);
 </script>
