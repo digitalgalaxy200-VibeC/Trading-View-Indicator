@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "description": "AI-powered SMC trading assistant — explains market structure events via Telegram",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc",
@@ -12,13 +11,18 @@
     "deploy:preview": "vercel"
   },
   "dependencies": {
-    "@types/node": "^26.1.1",
-    "@types/ws": "^8.18.1",
+    "dotenv": "^17.4.2",
+    "resend": "^6.17.2",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.1",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "ws": "^8.21.1"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/ws": "^8.18.1"
   }
 }
