@@ -881,58 +881,59 @@ if showHighLowSwingsInput or showPremiumDiscountZonesInput
 if showFairValueGapsInput
     deleteFairValueGaps()
 
-var int macroTrend = BEARISH
-var float externalHigh = na
-var int externalHighTime = na
-var float externalLow = na
-var int externalLowTime = na
+type MacroState
+    int trend
+    float externalHigh
+    int externalHighTime
+    float externalLow
+    int externalLowTime
+    float candidateHigh
+    int candidateHighTime
+    float candidateLow
+    int candidateLowTime
+    int lastInternalHighTime
+    int lastInternalLowTime
 
-var float candidateHigh = na
-var int candidateHighTime = na
-var float candidateLow = na
-var int candidateLowTime = na
-
-var int lastInternalHighTime = na
-var int lastInternalLowTime = na
+var MacroState mState = MacroState.new(BEARISH, na, na, na, na, na, na, na, na, na, na)
 
 // @function processMacroState
 processMacroState() =>
-    if internalHigh.barTime != lastInternalHighTime
-        lastInternalHighTime := internalHigh.barTime
+    if internalHigh.barTime != mState.lastInternalHighTime
+        mState.lastInternalHighTime := internalHigh.barTime
         
-        if na(candidateHigh) or internalHigh.currentLevel > candidateHigh
-            candidateHigh := internalHigh.currentLevel
-            candidateHighTime := internalHigh.barTime
+        if na(mState.candidateHigh) or internalHigh.currentLevel > mState.candidateHigh
+            mState.candidateHigh := internalHigh.currentLevel
+            mState.candidateHighTime := internalHigh.barTime
             
-        if macroTrend == BULLISH and na(externalHigh)
-            externalHigh := internalHigh.currentLevel
-            externalHighTime := internalHigh.barTime
+        if mState.trend == BULLISH and na(mState.externalHigh)
+            mState.externalHigh := internalHigh.currentLevel
+            mState.externalHighTime := internalHigh.barTime
 
-    if internalLow.barTime != lastInternalLowTime
-        lastInternalLowTime := internalLow.barTime
+    if internalLow.barTime != mState.lastInternalLowTime
+        mState.lastInternalLowTime := internalLow.barTime
         
-        if na(candidateLow) or internalLow.currentLevel < candidateLow
-            candidateLow := internalLow.currentLevel
-            candidateLowTime := internalLow.barTime
+        if na(mState.candidateLow) or internalLow.currentLevel < mState.candidateLow
+            mState.candidateLow := internalLow.currentLevel
+            mState.candidateLowTime := internalLow.barTime
             
-        if macroTrend == BEARISH and na(externalLow)
-            externalLow := internalLow.currentLevel
-            externalLowTime := internalLow.barTime
+        if mState.trend == BEARISH and na(mState.externalLow)
+            mState.externalLow := internalLow.currentLevel
+            mState.externalLowTime := internalLow.barTime
 
-    bullishBOS = macroTrend == BULLISH and not na(externalHigh) and ta.crossover(close, externalHigh)
-    bearishCHOCH = macroTrend == BULLISH and not na(externalLow) and ta.crossunder(close, externalLow)
-    bearishBOS = macroTrend == BEARISH and not na(externalLow) and ta.crossunder(close, externalLow)
-    bullishCHOCH = macroTrend == BEARISH and not na(externalHigh) and ta.crossover(close, externalHigh)
+    bullishBOS = mState.trend == BULLISH and not na(mState.externalHigh) and ta.crossover(close, mState.externalHigh)
+    bearishCHOCH = mState.trend == BULLISH and not na(mState.externalLow) and ta.crossunder(close, mState.externalLow)
+    bearishBOS = mState.trend == BEARISH and not na(mState.externalLow) and ta.crossunder(close, mState.externalLow)
+    bullishCHOCH = mState.trend == BEARISH and not na(mState.externalHigh) and ta.crossover(close, mState.externalHigh)
     
     if bullishBOS
-        brokenLevel = externalHigh
-        brokenTime = externalHighTime
-        if not na(candidateLow)
-            externalLow := candidateLow
-            externalLowTime := candidateLowTime
-        externalHigh := na
-        candidateHigh := na
-        candidateLow := na
+        brokenLevel = mState.externalHigh
+        brokenTime = mState.externalHighTime
+        if not na(mState.candidateLow)
+            mState.externalLow := mState.candidateLow
+            mState.externalLowTime := mState.candidateLowTime
+        mState.externalHigh := na
+        mState.candidateHigh := na
+        mState.candidateLow := na
         
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, "BOS", swingBullColorInput, label.style_label_down, swingStructureSize)
@@ -940,15 +941,15 @@ processMacroState() =>
             alert(buildWebhookJson('Bullish BOS', 'BULLISH', close, 'BULLISH', 'BULLISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
     else if bearishCHOCH
-        brokenLevel = externalLow
-        brokenTime = externalLowTime
-        macroTrend := BEARISH
-        if not na(candidateHigh)
-            externalHigh := candidateHigh
-            externalHighTime := candidateHighTime
-        externalLow := na
-        candidateHigh := na
-        candidateLow := na
+        brokenLevel = mState.externalLow
+        brokenTime = mState.externalLowTime
+        mState.trend := BEARISH
+        if not na(mState.candidateHigh)
+            mState.externalHigh := mState.candidateHigh
+            mState.externalHighTime := mState.candidateHighTime
+        mState.externalLow := na
+        mState.candidateHigh := na
+        mState.candidateLow := na
         
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, "CHoCH", swingBearColorInput, label.style_label_up, swingStructureSize)
@@ -956,14 +957,14 @@ processMacroState() =>
             alert(buildWebhookJson('Bearish CHoCH', 'BEARISH', close, 'BULLISH', 'BEARISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
     else if bearishBOS
-        brokenLevel = externalLow
-        brokenTime = externalLowTime
-        if not na(candidateHigh)
-            externalHigh := candidateHigh
-            externalHighTime := candidateHighTime
-        externalLow := na
-        candidateHigh := na
-        candidateLow := na
+        brokenLevel = mState.externalLow
+        brokenTime = mState.externalLowTime
+        if not na(mState.candidateHigh)
+            mState.externalHigh := mState.candidateHigh
+            mState.externalHighTime := mState.candidateHighTime
+        mState.externalLow := na
+        mState.candidateHigh := na
+        mState.candidateLow := na
         
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, "BOS", swingBearColorInput, label.style_label_up, swingStructureSize)
@@ -971,15 +972,15 @@ processMacroState() =>
             alert(buildWebhookJson('Bearish BOS', 'BEARISH', close, 'BEARISH', 'BEARISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
     else if bullishCHOCH
-        brokenLevel = externalHigh
-        brokenTime = externalHighTime
-        macroTrend := BULLISH
-        if not na(candidateLow)
-            externalLow := candidateLow
-            externalLowTime := candidateLowTime
-        externalHigh := na
-        candidateHigh := na
-        candidateLow := na
+        brokenLevel = mState.externalHigh
+        brokenTime = mState.externalHighTime
+        mState.trend := BULLISH
+        if not na(mState.candidateLow)
+            mState.externalLow := mState.candidateLow
+            mState.externalLowTime := mState.candidateLowTime
+        mState.externalHigh := na
+        mState.candidateHigh := na
+        mState.candidateLow := na
         
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, "CHoCH", swingBullColorInput, label.style_label_down, swingStructureSize)
