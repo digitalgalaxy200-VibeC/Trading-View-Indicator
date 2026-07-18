@@ -5,21 +5,26 @@ const BULLISH = 1;
 const BEARISH = 0;
 
 export interface PivotState {
-  activeSwingHigh: number | null;
-  activeSwingHighCrossed: boolean;
-  activeSwingLow: number | null;
-  activeSwingLowCrossed: boolean;
   currentTrend: number; // BULLISH (1) | BEARISH (0)
+  
+  // The macro structural anchors
+  externalHigh: number | null; 
+  externalLow: number | null;
+  
+  // Trackers for the current leg/pullback
+  candidateHigh: number | null;
+  candidateLow: number | null;
+  
   lastProcessedEpoch: number;
 }
 
 export function createInitialPivotState(): PivotState {
   return {
-    activeSwingHigh: null,
-    activeSwingHighCrossed: false,
-    activeSwingLow: null,
-    activeSwingLowCrossed: false,
-    currentTrend: BEARISH,
+    currentTrend: BEARISH, // Default, will self-correct during history replay
+    externalHigh: null,
+    externalLow: null,
+    candidateHigh: null,
+    candidateLow: null,
     lastProcessedEpoch: 0,
   };
 }
@@ -58,7 +63,7 @@ export class PivotDetector {
 
       if (currentCandle.epoch <= this.state.lastProcessedEpoch) continue;
 
-      // Check for newly confirmed pivots
+      // 1. Check for newly confirmed 5-bar pivots
       const pivotIdx = i - pivotLen;
       const potentialPivot = candles[pivotIdx];
       const windowCandles = candles.slice(pivotIdx + 1, i + 1);
@@ -70,53 +75,132 @@ export class PivotDetector {
         if (c.low < lowestInWindow) lowestInWindow = c.low;
       }
 
-      // Confirm swing high
+      // Confirm Swing High
       if (potentialPivot.high > highestInWindow) {
-        this.state.activeSwingHigh = potentialPivot.high;
-        this.state.activeSwingHighCrossed = false;
+        this.state.candidateHigh = Math.max(this.state.candidateHigh ?? -Infinity, potentialPivot.high);
+        
+        // If in Bullish trend and we don't have a macro resistance yet, this is it.
+        if (this.state.currentTrend === BULLISH && this.state.externalHigh === null) {
+          this.state.externalHigh = potentialPivot.high;
+        }
       }
 
-      // Confirm swing low
+      // Confirm Swing Low
       if (potentialPivot.low < lowestInWindow) {
-        this.state.activeSwingLow = potentialPivot.low;
-        this.state.activeSwingLowCrossed = false;
+        this.state.candidateLow = Math.min(this.state.candidateLow ?? Infinity, potentialPivot.low);
+        
+        // If in Bearish trend and we don't have a macro support yet, this is it.
+        if (this.state.currentTrend === BEARISH && this.state.externalLow === null) {
+          this.state.externalLow = potentialPivot.low;
+        }
       }
 
-      // Check for BOS/CHOCH breakouts
+      // 2. Check for Macro Structural Breakouts (External BOS / CHOCH)
       const close = currentCandle.close;
-      const trendBefore = this.state.currentTrend === BULLISH ? 'BULLISH' as const : 'BEARISH' as const;
 
-      // Bullish breakout
-      if (this.state.activeSwingHigh !== null && !this.state.activeSwingHighCrossed && close > this.state.activeSwingHigh) {
-        this.state.activeSwingHighCrossed = true;
-        const isChoch = this.state.currentTrend === BEARISH;
-        this.state.currentTrend = BULLISH;
+      if (this.state.currentTrend === BULLISH) {
+        // Bullish BOS (Trend Continuation)
+        if (this.state.externalHigh !== null && close > this.state.externalHigh) {
+          const brokenLevel = this.state.externalHigh;
+          
+          // The new Strong Low is the lowest point of the pullback we just finished
+          if (this.state.candidateLow !== null) {
+            this.state.externalLow = this.state.candidateLow;
+          }
+          
+          // Reset for price discovery
+          this.state.externalHigh = null; 
+          this.state.candidateLow = null; 
+          this.state.candidateHigh = null;
 
-        events.push({
-          event: isChoch ? 'Bullish CHoCH' : 'Bullish BOS',
-          direction: 'BULLISH',
-          price: close,
-          pivotLevel: this.state.activeSwingHigh,
-          trendBefore,
-          trendAfter: 'BULLISH',
-          candleEpoch: currentCandle.epoch,
-        });
-      }
-      // Bearish breakout
-      else if (this.state.activeSwingLow !== null && !this.state.activeSwingLowCrossed && close < this.state.activeSwingLow) {
-        this.state.activeSwingLowCrossed = true;
-        const isChoch = this.state.currentTrend === BULLISH;
-        this.state.currentTrend = BEARISH;
+          events.push({
+            event: 'Bullish BOS',
+            direction: 'BULLISH',
+            price: close,
+            pivotLevel: brokenLevel,
+            trendBefore: 'BULLISH',
+            trendAfter: 'BULLISH',
+            candleEpoch: currentCandle.epoch,
+          });
+        }
+        // Bearish CHOCH (Trend Reversal)
+        else if (this.state.externalLow !== null && close < this.state.externalLow) {
+          const brokenLevel = this.state.externalLow;
+          
+          this.state.currentTrend = BEARISH;
+          
+          // The new Strong High is the highest point of the structure that failed
+          if (this.state.candidateHigh !== null) {
+            this.state.externalHigh = this.state.candidateHigh;
+          }
+          
+          // Reset for price discovery
+          this.state.externalLow = null;
+          this.state.candidateHigh = null;
+          this.state.candidateLow = null;
 
-        events.push({
-          event: isChoch ? 'Bearish CHoCH' : 'Bearish BOS',
-          direction: 'BEARISH',
-          price: close,
-          pivotLevel: this.state.activeSwingLow,
-          trendBefore,
-          trendAfter: 'BEARISH',
-          candleEpoch: currentCandle.epoch,
-        });
+          events.push({
+            event: 'Bearish CHoCH',
+            direction: 'BEARISH',
+            price: close,
+            pivotLevel: brokenLevel,
+            trendBefore: 'BULLISH',
+            trendAfter: 'BEARISH',
+            candleEpoch: currentCandle.epoch,
+          });
+        }
+      } 
+      else { // BEARISH TREND
+        // Bearish BOS (Trend Continuation)
+        if (this.state.externalLow !== null && close < this.state.externalLow) {
+          const brokenLevel = this.state.externalLow;
+          
+          // The new Strong High is the highest point of the pullback we just finished
+          if (this.state.candidateHigh !== null) {
+            this.state.externalHigh = this.state.candidateHigh;
+          }
+          
+          // Reset for price discovery
+          this.state.externalLow = null;
+          this.state.candidateHigh = null;
+          this.state.candidateLow = null;
+
+          events.push({
+            event: 'Bearish BOS',
+            direction: 'BEARISH',
+            price: close,
+            pivotLevel: brokenLevel,
+            trendBefore: 'BEARISH',
+            trendAfter: 'BEARISH',
+            candleEpoch: currentCandle.epoch,
+          });
+        }
+        // Bullish CHOCH (Trend Reversal)
+        else if (this.state.externalHigh !== null && close > this.state.externalHigh) {
+          const brokenLevel = this.state.externalHigh;
+          
+          this.state.currentTrend = BULLISH;
+          
+          // The new Strong Low is the lowest point of the structure that failed
+          if (this.state.candidateLow !== null) {
+            this.state.externalLow = this.state.candidateLow;
+          }
+          
+          // Reset for price discovery
+          this.state.externalHigh = null;
+          this.state.candidateLow = null;
+          this.state.candidateHigh = null;
+
+          events.push({
+            event: 'Bullish CHoCH',
+            direction: 'BULLISH',
+            price: close,
+            pivotLevel: brokenLevel,
+            trendBefore: 'BEARISH',
+            trendAfter: 'BULLISH',
+            candleEpoch: currentCandle.epoch,
+          });
+        }
       }
 
       this.state.lastProcessedEpoch = currentCandle.epoch;

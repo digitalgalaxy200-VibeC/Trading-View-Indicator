@@ -21,12 +21,12 @@ exports.config = {
         .split(',')
         .map(s => s.trim())
         .filter(Boolean),
-    timeframe: parseInt(optionalEnv('TIMEFRAME', '900'), 10), // candle granularity in seconds
-    pivotLength: parseInt(optionalEnv('PIVOT_LENGTH', '50'), 10),
+    timeframe: 900, // FORCE 15-minute candles (900 seconds)
+    pivotLength: 5, // FORCE 5-candle pivot length
     // ── DeepSeek ──
     deepseekApiKey: requireEnv('DEEPSEEK_API_KEY'),
     deepseekModel: optionalEnv('DEEPSEEK_MODEL', 'deepseek-chat'),
-    deepseekMaxTokens: parseInt(optionalEnv('DEEPSEEK_MAX_TOKENS', '300'), 10),
+    deepseekMaxTokens: parseInt(optionalEnv('DEEPSEEK_MAX_TOKENS', '600'), 10),
     deepseekTemperature: parseFloat(optionalEnv('DEEPSEEK_TEMPERATURE', '0.3')),
     // ── Resend ──
     resendApiKey: requireEnv('RESEND_API_KEY'),
