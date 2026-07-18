@@ -710,7 +710,7 @@ function renderAlerts() {
   const start = (currentAlertPage - 1) * PAGE_SIZE;
   const pageData = alertsData.slice(start, start + PAGE_SIZE);
 
-  document.getElementById('alerts-page-info').textContent = \`Page \${currentAlertPage} of \${totalPages}\`;
+  document.getElementById('alerts-page-info').textContent = `Page ${currentAlertPage} of ${totalPages}`;
   document.getElementById('alerts-prev').disabled = currentAlertPage === 1;
   document.getElementById('alerts-next').disabled = currentAlertPage === totalPages;
 
@@ -757,7 +757,7 @@ function renderEmails() {
   const start = (currentEmailPage - 1) * PAGE_SIZE;
   const pageData = emailsData.slice(start, start + PAGE_SIZE);
 
-  document.getElementById('emails-page-info').textContent = \`Page \${currentEmailPage} of \${totalPages}\`;
+  document.getElementById('emails-page-info').textContent = `Page ${currentEmailPage} of ${totalPages}`;
   document.getElementById('emails-prev').disabled = currentEmailPage === 1;
   document.getElementById('emails-next').disabled = currentEmailPage === totalPages;
 
