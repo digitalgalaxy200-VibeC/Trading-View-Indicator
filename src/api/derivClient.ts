@@ -32,7 +32,7 @@ export class DerivClient {
           ticks_history: symbol,
           style: 'candles',
           granularity: config.timeframe,
-          count: config.pivotLength + 10, // enough candles to detect pivots
+          count: 200, // Fetch ~2 days of history to perfectly reconstruct the recent pivot state
           end: 'latest',
           subscribe: 1,
         }));

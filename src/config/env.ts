@@ -18,7 +18,7 @@ export const config = {
     .map(s => s.trim())
     .filter(Boolean),
   timeframe: 900,  // FORCE 15-minute candles (900 seconds)
-  pivotLength: 50, // FORCE 50-candle pivot length
+  pivotLength: 5,  // FORCE 5-candle pivot length
 
   // ── DeepSeek ──
   deepseekApiKey: requireEnv('DEEPSEEK_API_KEY'),
