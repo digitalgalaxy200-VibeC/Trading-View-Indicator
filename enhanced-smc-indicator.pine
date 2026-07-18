@@ -635,7 +635,7 @@ displayStructure(bool internal = false) =>
         p_ivot.crossed  := true
         t_rend.bias     := BULLISH
 
-        displayCondition = internal ? showInternalsInput and (showInternalBullInput == ALL or (showInternalBullInput == BOS and tag != CHOCH) or (showInternalBullInput == CHOCH and tag == CHOCH)) : showStructureInput and (showSwingBullInput == ALL or (showSwingBullInput == BOS and tag != CHOCH) or (showSwingBullInput == CHOCH and tag == CHOCH))
+        displayCondition = internal ? showInternalsInput and (showInternalBullInput == ALL or (showInternalBullInput == BOS and tag != CHOCH) or (showInternalBullInput == CHOCH and tag == CHOCH)) : false // DISABLED OLD SWING DRAWING
 
         if displayCondition                        
             drawStructure(p_ivot,tag,bullishColor,lineStyle,label.style_label_down,labelSize)
@@ -644,7 +644,7 @@ displayStructure(bool internal = false) =>
             storeOrdeBlock(p_ivot,internal,BULLISH)
 
         // ── Fire webhook alert for bullish CHOCH/BOS ──
-        if webhookEnabledInput
+        if webhookEnabledInput and internal
             eventLabel      = tag == CHOCH ? 'Bullish CHoCH' : 'Bullish BOS'
             trendAfterStr   = 'BULLISH'
             structureStr    = internal ? 'internal' : 'swing'
@@ -670,7 +670,7 @@ displayStructure(bool internal = false) =>
         p_ivot.crossed := true
         t_rend.bias := BEARISH
 
-        displayCondition = internal ? showInternalsInput and (showInternalBearInput == ALL or (showInternalBearInput == BOS and tag != CHOCH) or (showInternalBearInput == CHOCH and tag == CHOCH)) : showStructureInput and (showSwingBearInput == ALL or (showSwingBearInput == BOS and tag != CHOCH) or (showSwingBearInput == CHOCH and tag == CHOCH))
+        displayCondition = internal ? showInternalsInput and (showInternalBearInput == ALL or (showInternalBearInput == BOS and tag != CHOCH) or (showInternalBearInput == CHOCH and tag == CHOCH)) : false // DISABLED OLD SWING DRAWING
         
         if displayCondition                        
             drawStructure(p_ivot,tag,bearishColor,lineStyle,label.style_label_up,labelSize)
@@ -679,7 +679,7 @@ displayStructure(bool internal = false) =>
             storeOrdeBlock(p_ivot,internal,BEARISH)
 
         // ── Fire webhook alert for bearish CHOCH/BOS ──
-        if webhookEnabledInput
+        if webhookEnabledInput and internal
             eventLabel      = tag == CHOCH ? 'Bearish CHoCH' : 'Bearish BOS'
             trendAfterStr   = 'BEARISH'
             structureStr    = internal ? 'internal' : 'swing'
@@ -834,6 +834,19 @@ drawPremiumDiscountZones() =>
 
     drawZone(trailing.bottom, math.round(0.5*(trailing.barIndex + last_bar_index)), 0.95*trailing.bottom + 0.05*trailing.top, trailing.bottom, 'Discount', discountZoneColor, label.style_label_up)
 
+// @function drawMacroLine
+drawMacroLine(int pTime, float pLevel, string tag, color structureColor, string labelStyle, string labelSize) =>
+    var line l_ine      = line.new(na,na,na,na,xloc = xloc.bar_time)
+    var label l_abel    = label.new(na,na)
+
+    if modeInput == PRESENT
+        l_ine.delete()
+        l_abel.delete()
+
+    l_ine   := line.new(chart.point.new(pTime,na,pLevel), chart.point.new(time,na,pLevel), xloc.bar_time, color=structureColor, style=line.style_solid)
+    labelMidTime = math.round(0.5 * (pTime + time))
+    l_abel  := label.new(chart.point.new(labelMidTime,na,pLevel), tag, xloc.bar_time, color=color(na), textcolor=structureColor, style=labelStyle, size = labelSize)
+
 //---------------------------------------------------------------------------------------------------------------------}
 //MUTABLE VARIABLES & EXECUTION
 //---------------------------------------------------------------------------------------------------------------------{
@@ -868,8 +881,114 @@ if showHighLowSwingsInput or showPremiumDiscountZonesInput
 if showFairValueGapsInput
     deleteFairValueGaps()
 
-getCurrentStructure(swingsLengthInput,false)
-getCurrentStructure(5,false,true)
+var int macroTrend = BEARISH
+var float externalHigh = na
+var int externalHighTime = na
+var float externalLow = na
+var int externalLowTime = na
+
+var float candidateHigh = na
+var int candidateHighTime = na
+var float candidateLow = na
+var int candidateLowTime = na
+
+var int lastInternalHighTime = na
+var int lastInternalLowTime = na
+
+// @function processMacroState
+processMacroState() =>
+    if internalHigh.barTime != lastInternalHighTime
+        lastInternalHighTime := internalHigh.barTime
+        
+        if na(candidateHigh) or internalHigh.currentLevel > candidateHigh
+            candidateHigh := internalHigh.currentLevel
+            candidateHighTime := internalHigh.barTime
+            
+        if macroTrend == BULLISH and na(externalHigh)
+            externalHigh := internalHigh.currentLevel
+            externalHighTime := internalHigh.barTime
+
+    if internalLow.barTime != lastInternalLowTime
+        lastInternalLowTime := internalLow.barTime
+        
+        if na(candidateLow) or internalLow.currentLevel < candidateLow
+            candidateLow := internalLow.currentLevel
+            candidateLowTime := internalLow.barTime
+            
+        if macroTrend == BEARISH and na(externalLow)
+            externalLow := internalLow.currentLevel
+            externalLowTime := internalLow.barTime
+
+    bullishBOS = macroTrend == BULLISH and not na(externalHigh) and ta.crossover(close, externalHigh)
+    bearishCHOCH = macroTrend == BULLISH and not na(externalLow) and ta.crossunder(close, externalLow)
+    bearishBOS = macroTrend == BEARISH and not na(externalLow) and ta.crossunder(close, externalLow)
+    bullishCHOCH = macroTrend == BEARISH and not na(externalHigh) and ta.crossover(close, externalHigh)
+    
+    if bullishBOS
+        brokenLevel = externalHigh
+        brokenTime = externalHighTime
+        if not na(candidateLow)
+            externalLow := candidateLow
+            externalLowTime := candidateLowTime
+        externalHigh := na
+        candidateHigh := na
+        candidateLow := na
+        
+        if showStructureInput
+            drawMacroLine(brokenTime, brokenLevel, "BOS", swingBullColorInput, label.style_label_down, swingStructureSize)
+        if webhookEnabledInput
+            alert(buildWebhookJson('Bullish BOS', 'BULLISH', close, 'BULLISH', 'BULLISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
+
+    else if bearishCHOCH
+        brokenLevel = externalLow
+        brokenTime = externalLowTime
+        macroTrend := BEARISH
+        if not na(candidateHigh)
+            externalHigh := candidateHigh
+            externalHighTime := candidateHighTime
+        externalLow := na
+        candidateHigh := na
+        candidateLow := na
+        
+        if showStructureInput
+            drawMacroLine(brokenTime, brokenLevel, "CHoCH", swingBearColorInput, label.style_label_up, swingStructureSize)
+        if webhookEnabledInput
+            alert(buildWebhookJson('Bearish CHoCH', 'BEARISH', close, 'BULLISH', 'BEARISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
+
+    else if bearishBOS
+        brokenLevel = externalLow
+        brokenTime = externalLowTime
+        if not na(candidateHigh)
+            externalHigh := candidateHigh
+            externalHighTime := candidateHighTime
+        externalLow := na
+        candidateHigh := na
+        candidateLow := na
+        
+        if showStructureInput
+            drawMacroLine(brokenTime, brokenLevel, "BOS", swingBearColorInput, label.style_label_up, swingStructureSize)
+        if webhookEnabledInput
+            alert(buildWebhookJson('Bearish BOS', 'BEARISH', close, 'BEARISH', 'BEARISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
+
+    else if bullishCHOCH
+        brokenLevel = externalHigh
+        brokenTime = externalHighTime
+        macroTrend := BULLISH
+        if not na(candidateLow)
+            externalLow := candidateLow
+            externalLowTime := candidateLowTime
+        externalHigh := na
+        candidateHigh := na
+        candidateLow := na
+        
+        if showStructureInput
+            drawMacroLine(brokenTime, brokenLevel, "CHoCH", swingBullColorInput, label.style_label_down, swingStructureSize)
+        if webhookEnabledInput
+            alert(buildWebhookJson('Bullish CHoCH', 'BULLISH', close, 'BEARISH', 'BULLISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
+
+// MACRO STATE MACHINE Replaces 50-length Swing
+getCurrentStructure(5,false,true) // Process internal 5-bar pivots
+processMacroState()               // Process macro logic using internal pivots
 
 if showEqualHighsLowsInput
     getCurrentStructure(equalHighsLowsLengthInput,true)
