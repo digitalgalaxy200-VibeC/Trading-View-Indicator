@@ -34,7 +34,7 @@ stateRoutes.get('/alerts', (req: Request, res: Response) => {
 // ── Single Alert Detail (for modal) ──
 stateRoutes.get('/alerts/:id', (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const alert = alertRepository.getById(id);
     if (!alert) return res.status(404).json({ error: 'Not found' });
     res.json(alert);
@@ -57,7 +57,7 @@ stateRoutes.get('/emails', (req: Request, res: Response) => {
 // ── Single Email Detail with its alerts (for modal) ──
 stateRoutes.get('/emails/:id', (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     const email = emailRepository.getById(id);
     if (!email) return res.status(404).json({ error: 'Not found' });
     const alerts = alertRepository.getByEmailId(id);

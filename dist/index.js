@@ -41,11 +41,16 @@ const onEventDetected = (symbol, rawEvent) => {
     }
     console.log(`  ✅ Event saved (ID: ${eventRow.id})`);
     // Update market state
-    const isChoch = event.event.includes('CHOCH');
+    const isChoch = event.event.toUpperCase().includes('CHOCH');
     marketStateRepository_1.marketStateRepository.upsert(symbolId, event.trendAfter, event.price, isChoch);
-    // Enqueue alert for notification
-    alertQueue.enqueue(eventRow.id);
-    console.log(`  📬 Alert queued (pending: ${alertQueue.count()})`);
+    // Enqueue alert for notification ONLY IF it's a BOS event
+    if (event.event.includes('BOS')) {
+        alertQueue.enqueue(eventRow.id);
+        console.log(`  📬 Alert queued (pending: ${alertQueue.count()})`);
+    }
+    else {
+        console.log(`  ⏭ Event is CHoCH. Suppressed from notification queue.`);
+    }
 };
 // ── Create CandleManager per symbol ──
 const managers = new Map();
