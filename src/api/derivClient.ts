@@ -12,6 +12,9 @@ export class DerivClient {
   private reconnectDelay = 1000;
   private maxReconnectDelay = 30000;
 
+  // Track the current open candle per symbol. We only emit when the epoch changes.
+  private currentCandles = new Map<string, Candle>();
+
   onHistory(cb: HistoryCallback): void { this.historyCb = cb; }
   onCandleClosed(cb: CandleCallback): void { this.candleCb = cb; }
 
@@ -77,18 +80,30 @@ export class DerivClient {
       }
     }
 
-    // Streaming candle (ohlc) — sent when current candle closes
+    // Streaming candle (ohlc) — sent continuously on every tick
     if (msg.ohlc && msg.msg_type === 'ohlc') {
       const symbol = msg.echo_req?.ticks_history;
       if (symbol && this.candleCb) {
-        const candle: Candle = {
-          epoch: parseInt(msg.ohlc.epoch, 10),
+        const currentEpoch = parseInt(msg.ohlc.epoch, 10);
+        
+        const tickCandle: Candle = {
+          epoch: currentEpoch,
           open: parseFloat(msg.ohlc.open),
           high: parseFloat(msg.ohlc.high),
           low: parseFloat(msg.ohlc.low),
           close: parseFloat(msg.ohlc.close),
         };
-        this.candleCb(symbol, candle);
+
+        const existingCandle = this.currentCandles.get(symbol);
+
+        // If we have an existing candle and the epoch has moved forward,
+        // it means the existing candle has officially closed!
+        if (existingCandle && existingCandle.epoch < currentEpoch) {
+          this.candleCb(symbol, existingCandle);
+        }
+
+        // Always update the buffer with the latest tick for the current epoch
+        this.currentCandles.set(symbol, tickCandle);
       }
     }
   }
