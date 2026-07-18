@@ -5,8 +5,8 @@
 // Adds structured JSON webhook payloads for CHOCH/BOS events.
 // All original functionality preserved.
 
-//@version=5
-indicator('Smart Money Concepts [LuxAlgo]', 'LuxAlgo - Smart Money Concepts', overlay = true, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
+//@version=6
+indicator("Godwin's Indicator", "Godwin's Indicator", overlay = true, max_labels_count = 500, max_lines_count = 500, max_boxes_count = 500)
 //---------------------------------------------------------------------------------------------------------------------}
 //CONSTANTS & STRINGS & INPUTS
 //---------------------------------------------------------------------------------------------------------------------{
@@ -143,6 +143,9 @@ discountZoneColorInput          = input.color(  GREEN,      'Discount Zone',    
 // ── NEW: Webhook inputs ──
 webhookEnabledInput             = input(        true,       'Enable Webhook Alerts',    group = WEBHOOK_GROUP,  tooltip = webhookEnabledTooltip)
 webhookSecretInput              = input.string( '',         'Webhook Secret',           group = WEBHOOK_GROUP,  tooltip = webhookSecretTooltip)
+
+// ── TEMPORARY TEST INPUT ──
+testFireInput                   = input.bool(   false,      '⚠️ TEST — Fire Sample Webhook Once', group = WEBHOOK_GROUP, tooltip = 'Check to send one test webhook. Uncheck after testing. REMOVE this input after validation.')
 
 //---------------------------------------------------------------------------------------------------------------------}
 //DATA STRUCTURES & VARIABLES
@@ -309,17 +312,13 @@ alerts currentAlerts                = alerts.new()
 // @variable                        time at start of chart
 var initialTime                     = time
 
-// ── NEW: Webhook payload variables ──
-// @variable                        JSON webhook payload string
-var string webhookPayload           = ''
-// @variable                        flag indicating payload should be sent
-var bool webhookReady               = false
+// ── Webhook alerts are fired directly via alert() inside displayStructure() ──
 
 // we create the needed boxes for displaying order blocks at the first execution
 if barstate.isfirst
     if showSwingOrderBlocksInput
         for index = 1 to swingOrderBlocksSizeInput
-            swingOrderBlocksBoxes.push(box.new(na,na,na,na,xloc = xloc.bar_time,extend = extend.right))
+            swingOrderBlocksBoxes.push(box.new(na,na,na,na,xloc = xloc.bar_time,extend = extend.none))
     if showInternalOrderBlocksInput
         for index = 1 to internalOrderBlocksSizeInput
             internalOrderBlocksBoxes.push(box.new(na,na,na,na,xloc = xloc.bar_time,extend = extend.right))
@@ -452,8 +451,8 @@ drawEqualHighLow(pivot p_ivot, float level, int size, bool equalHigh) =>
         label.delete(   e_qualDisplay.l_abel)
         
     e_qualDisplay.l_ine     := line.new(chart.point.new(p_ivot.barTime,na,p_ivot.currentLevel), chart.point.new(time[size],na,level), xloc = xloc.bar_time, color = equalColor, style = line.style_dotted)
-    labelPosition           = math.round(0.5*(p_ivot.barIndex + bar_index - size))
-    e_qualDisplay.l_abel    := label.new(chart.point.new(na,labelPosition,level), tag, xloc.bar_index, color = color(na), textcolor = equalColor, style = labelStyle, size = equalHighsLowsSizeInput)
+    labelMidTime            = math.round(0.5 * (p_ivot.barTime + time[size]))
+    e_qualDisplay.l_abel    := label.new(chart.point.new(labelMidTime,na,level), tag, xloc.bar_time, color = color(na), textcolor = equalColor, style = labelStyle, size = equalHighsLowsSizeInput)
 
 // @function            store current structure and trailing swing points, and also display swing points and equal highs/lows
 // @param size          (int) structure size
@@ -527,7 +526,8 @@ drawStructure(pivot p_ivot, string tag, color structureColor, string lineStyle, 
         l_abel.delete()
 
     l_ine   := line.new(chart.point.new(p_ivot.barTime,na,p_ivot.currentLevel), chart.point.new(time,na,p_ivot.currentLevel), xloc.bar_time, color=structureColor, style=lineStyle)
-    l_abel  := label.new(chart.point.new(na,math.round(0.5*(p_ivot.barIndex+bar_index)),p_ivot.currentLevel), tag, xloc.bar_index, color=color(na), textcolor=structureColor, style=labelStyle, size = labelSize)
+    labelMidTime = math.round(0.5 * (p_ivot.barTime + time))
+    l_abel  := label.new(chart.point.new(labelMidTime,na,p_ivot.currentLevel), tag, xloc.bar_time, color=color(na), textcolor=structureColor, style=labelStyle, size = labelSize)
 
 // @function            delete order blocks
 // @param internal      true for internal order blocks
@@ -643,13 +643,12 @@ displayStructure(bool internal = false) =>
         if (internal and showInternalOrderBlocksInput) or (not internal and showSwingOrderBlocksInput)
             storeOrdeBlock(p_ivot,internal,BULLISH)
 
-        // ── NEW: Build webhook payload for bullish CHOCH/BOS ──
+        // ── Fire webhook alert for bullish CHOCH/BOS ──
         if webhookEnabledInput
             eventLabel      = tag == CHOCH ? 'Bullish CHoCH' : 'Bullish BOS'
             trendAfterStr   = 'BULLISH'
             structureStr    = internal ? 'internal' : 'swing'
-            webhookPayload  := buildWebhookJson(eventLabel, 'BULLISH', close, trendBeforeStr, trendAfterStr, p_ivot.currentLevel, structureStr)
-            webhookReady    := true
+            alert(buildWebhookJson(eventLabel, 'BULLISH', close, trendBeforeStr, trendAfterStr, p_ivot.currentLevel, structureStr), alert.freq_once_per_bar_close)
 
     p_ivot          := internal ? internalLow : swingLow    
     extraCondition  := internal ? internalLow.currentLevel != swingLow.currentLevel and bearishBar : true
@@ -679,13 +678,12 @@ displayStructure(bool internal = false) =>
         if (internal and showInternalOrderBlocksInput) or (not internal and showSwingOrderBlocksInput)
             storeOrdeBlock(p_ivot,internal,BEARISH)
 
-        // ── NEW: Build webhook payload for bearish CHOCH/BOS ──
+        // ── Fire webhook alert for bearish CHOCH/BOS ──
         if webhookEnabledInput
             eventLabel      = tag == CHOCH ? 'Bearish CHoCH' : 'Bearish BOS'
             trendAfterStr   = 'BEARISH'
             structureStr    = internal ? 'internal' : 'swing'
-            webhookPayload  := buildWebhookJson(eventLabel, 'BEARISH', close, trendBeforeStr, trendAfterStr, p_ivot.currentLevel, structureStr)
-            webhookReady    := true
+            alert(buildWebhookJson(eventLabel, 'BEARISH', close, trendBeforeStr, trendAfterStr, p_ivot.currentLevel, structureStr), alert.freq_once_per_bar_close)
 
 // @function            draw one fair value gap box (each fair value gap has two boxes)
 // @param leftTime      left time coordinate
@@ -839,9 +837,20 @@ drawPremiumDiscountZones() =>
 //---------------------------------------------------------------------------------------------------------------------}
 //MUTABLE VARIABLES & EXECUTION
 //---------------------------------------------------------------------------------------------------------------------{
-// ── Reset webhook state each bar ──
-webhookPayload := ''
-webhookReady   := false
+
+// ── TEMPORARY: One-shot test webhook ──
+var testAlreadyFired = false
+if testFireInput and not testAlreadyFired
+    testPayload = buildWebhookJson(
+      'Bullish CHOCH',     // event
+      'BULLISH',            // direction
+      close,                // price (current bar close)
+      'BEARISH',            // trend_before
+      'BULLISH',            // trend_after
+      close[1],             // pivot_level (previous bar close for realism)
+      'swing')              // structure type
+    alert(testPayload, alert.freq_once_per_bar_close)
+    testAlreadyFired := true
 
 parsedOpen  = showTrendInput ? open : na
 candleColor = internalTrend.bias == BULLISH ? swingBullishColor : swingBearishColor
@@ -926,13 +935,10 @@ alertcondition(currentAlerts.bullishFairValueGap,       'Bullish FVG',          
 alertcondition(currentAlerts.bearishFairValueGap,       'Bearish FVG',                  'Bearish FVG formed')
 
 //---------------------------------------------------------------------------------------------------------------------}
-//WEBHOOK ALERT (New — structured JSON payload)
-//---------------------------------------------------------------------------------------------------------------------{
-// Single alert that fires whenever a CHOCH or BOS event is detected.
-// The user creates ONE alert per symbol in TradingView, configured with:
-//   Condition: "Webhook — Structure Event"
+// WEBHOOK NOTE:
+// Alerts are fired automatically via alert() inside displayStructure().
+// In TradingView, create ONE alert per symbol:
+//   Condition: Any condition on Godwin's Indicator
 //   Webhook URL: https://<project>.vercel.app/api/webhook
 //   Message: {{alert_message}}
-alertcondition(webhookReady, 'Webhook — Structure Event', webhookPayload)
-
 //---------------------------------------------------------------------------------------------------------------------}
