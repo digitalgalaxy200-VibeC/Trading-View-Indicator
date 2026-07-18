@@ -920,10 +920,10 @@ processMacroState() =>
             mState.externalLow := internalLow.currentLevel
             mState.externalLowTime := internalLow.barTime
 
-    bullishBOS = mState.trend == BULLISH and not na(mState.externalHigh) and ta.crossover(close, mState.externalHigh)
-    bearishCHOCH = mState.trend == BULLISH and not na(mState.externalLow) and ta.crossunder(close, mState.externalLow)
-    bearishBOS = mState.trend == BEARISH and not na(mState.externalLow) and ta.crossunder(close, mState.externalLow)
-    bullishCHOCH = mState.trend == BEARISH and not na(mState.externalHigh) and ta.crossover(close, mState.externalHigh)
+    bullishBOS = mState.trend == BULLISH and not na(mState.externalHigh) and close > mState.externalHigh
+    bearishCHOCH = mState.trend == BULLISH and not na(mState.externalLow) and close < mState.externalLow
+    bearishBOS = mState.trend == BEARISH and not na(mState.externalLow) and close < mState.externalLow
+    bullishCHOCH = mState.trend == BEARISH and not na(mState.externalHigh) and close > mState.externalHigh
     
     if bullishBOS
         brokenLevel = mState.externalHigh
