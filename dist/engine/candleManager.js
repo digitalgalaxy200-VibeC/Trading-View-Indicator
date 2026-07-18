@@ -11,6 +11,8 @@ class CandleManager {
     breakoutDetector;
     // Track the ID of the last event we fired to avoid duplicates
     lastFiredEventId = null;
+    // Gate: prevents historical initialization from firing live notifications
+    isInitializing = true;
     constructor(onEventDetected) {
         this.onEventDetected = onEventDetected;
         this.swingDetector = new swingDetector_1.SwingDetector();
@@ -18,21 +20,24 @@ class CandleManager {
     }
     /**
      * Called once when the initial history is loaded via WebSocket.
+     * Runs silently — no notifications are dispatched during this phase.
      */
     initializeHistory(history) {
-        // We only need enough history to cover the lookback window safely.
-        // E.g., if PIVOT_LENGTH is 50, storing 200 candles is plenty.
-        this.candles = history.slice(-200);
-        console.log(`[Engine] Initializing with ${this.candles.length} historical candles.`);
-        // We process the historical candles sequentially to build the current state.
-        // We start from index PIVOT_LENGTH to ensure we have enough lookback data.
+        this.isInitializing = true;
+        // Store the last 300 candles to give the algorithm a solid context window
+        this.candles = history.slice(-300);
+        console.log(`[Engine] Replaying ${this.candles.length} historical candles to build state (silent)...`);
+        // Replay all candles to reconstruct the current market structure state.
+        // No events are fired during this loop.
         for (let i = env_1.config.pivotLength; i < this.candles.length; i++) {
             this.evaluateCandleClosure(i);
         }
-        console.log(`[Engine] Initial state built.`);
-        console.log(`  Current Trend: ${this.breakoutDetector.getCurrentTrend()}`);
+        // History replay complete — switch to live mode
+        this.isInitializing = false;
+        console.log(`[Engine] ✅ Initial state built. Now watching for LIVE events.`);
+        console.log(`  Current Trend:     ${this.breakoutDetector.getCurrentTrend()}`);
         console.log(`  Active Swing High: ${this.swingDetector.getActiveSwingHigh()}`);
-        console.log(`  Active Swing Low: ${this.swingDetector.getActiveSwingLow()}`);
+        console.log(`  Active Swing Low:  ${this.swingDetector.getActiveSwingLow()}`);
     }
     /**
      * Called every time a new live candle officially closes.
@@ -45,16 +50,16 @@ class CandleManager {
         if (this.candles.length > 500) {
             this.candles.shift();
         }
-        // Evaluate this latest closure
+        // Evaluate this latest closure (isInitializing is false, so events fire normally)
         this.evaluateCandleClosure(this.candles.length - 1);
     }
     /**
      * The core evaluation loop for a specific closed candle index.
      */
     evaluateCandleClosure(currentIndex) {
-        // 1. Give the SwingDetector the opportunity to confirm a pivot that occurred 'PIVOT_LENGTH' bars ago.
+        // 1. Give the SwingDetector the opportunity to confirm a pivot
         this.swingDetector.evaluatePivots(this.candles, currentIndex);
-        // 2. Give the BreakoutDetector the opportunity to check if the CURRENT candle broke an active pivot.
+        // 2. Give the BreakoutDetector the opportunity to check if the CURRENT candle broke an active pivot
         const activeHigh = this.swingDetector.getActiveSwingHigh();
         const activeLow = this.swingDetector.getActiveSwingLow();
         const currentCandle = this.candles[currentIndex];
@@ -62,19 +67,13 @@ class CandleManager {
             return;
         }
         const event = this.breakoutDetector.evaluateBreakouts(currentCandle, activeHigh, activeLow);
-        // 3. Dispatch event if detected and not a duplicate
-        if (event) {
-            if (event.id !== this.lastFiredEventId) {
-                this.lastFiredEventId = event.id;
-                // We only dispatch events for LIVE candles, not during the historical initialization phase.
-                // We know it's a live candle if currentIndex is the very last element of the array AFTER history is initialized.
-                // To be safer, we can just check if we're evaluating the very last candle of the array.
-                // Wait, if initializeHistory is running, it runs in a loop. We shouldn't dispatch events for history.
-                // We handle this by checking if the array is already fully initialized.
-                // Let's pass a flag or just assume this callback logic handles it in `index.ts`.
-                // Actually, we pass the event out, and `index.ts` can decide. But it's easier to only fire if it's the absolute latest.
-                this.onEventDetected(event);
-            }
+        // 3. Dispatch event only if:
+        //    a) An event was detected
+        //    b) It's not a duplicate of the last event
+        //    c) We are NOT in the silent historical initialization phase
+        if (event && event.id !== this.lastFiredEventId && !this.isInitializing) {
+            this.lastFiredEventId = event.id;
+            this.onEventDetected(event);
         }
     }
 }

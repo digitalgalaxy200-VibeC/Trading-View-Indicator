@@ -6,38 +6,68 @@ class SwingDetector {
     activeSwingHigh = null;
     activeSwingLow = null;
     /**
-     * Evaluates if the candle at (currentIndex - PIVOT_LENGTH) is a confirmed pivot.
-     * This logic matches exactly how TradingView confirms pivots based on a trailing window.
+     * Faithfully replicates Pine Script's ta.pivothigh(pivotLen, pivotLen) and
+     * ta.pivotlow(pivotLen, pivotLen) behavior.
+     *
+     * In Pine Script, ta.pivothigh(leftBars, rightBars) confirms a pivot high at
+     * bar[rightBars] only when BOTH conditions are met:
+     *   1. The candidate bar's high is strictly greater than all 'leftBars' bars before it.
+     *   2. The candidate bar's high is strictly greater than all 'rightBars' bars after it.
+     *
+     * This means a pivot is confirmed 'pivotLen' bars AFTER it occurred.
+     * At the moment currentIndex is being evaluated, the candidate pivot is at:
+     *   pivotIdx = currentIndex - pivotLen
+     *
+     * We then verify it was also higher/lower than all 'pivotLen' bars that came
+     * BEFORE it (leftBars), which are at indices [pivotIdx - pivotLen ... pivotIdx - 1].
      */
     evaluatePivots(candles, currentIndex) {
         const pivotLen = env_1.config.pivotLength;
-        if (currentIndex < pivotLen) {
-            return; // Not enough history to confirm a pivot yet
-        }
-        const pivotIdx = currentIndex - pivotLen;
-        const potentialPivot = candles[pivotIdx];
-        if (!potentialPivot) {
+        // We need at least (2 * pivotLen) candles from the start to have both sides
+        if (currentIndex < 2 * pivotLen) {
             return;
         }
-        // The window of candles that occurred *after* the potential pivot, up to the current index.
-        const windowCandles = candles.slice(pivotIdx + 1, currentIndex + 1);
-        let highestInWindow = -Infinity;
-        let lowestInWindow = Infinity;
-        for (const c of windowCandles) {
-            if (c.high > highestInWindow)
-                highestInWindow = c.high;
-            if (c.low < lowestInWindow)
-                lowestInWindow = c.low;
+        // The candidate pivot is 'pivotLen' bars behind the current index (right-side confirmed)
+        const pivotIdx = currentIndex - pivotLen;
+        const candidate = candles[pivotIdx];
+        if (!candidate) {
+            return;
         }
-        // Confirm Pivot High (Swing High)
-        // If the potential pivot's high is strictly greater than all highs in the subsequent window
-        if (potentialPivot.high > highestInWindow) {
-            this.activeSwingHigh = potentialPivot.high;
+        // --- Left window: the 'pivotLen' candles strictly before the candidate ---
+        const leftStart = pivotIdx - pivotLen;
+        const leftEnd = pivotIdx; // exclusive (not including the candidate itself)
+        // --- Right window: the 'pivotLen' candles strictly after the candidate ---
+        const rightStart = pivotIdx + 1;
+        const rightEnd = currentIndex + 1; // inclusive of current
+        let highestLeft = -Infinity;
+        let lowestLeft = Infinity;
+        let highestRight = -Infinity;
+        let lowestRight = Infinity;
+        for (let i = leftStart; i < leftEnd; i++) {
+            const c = candles[i];
+            if (!c)
+                continue;
+            if (c.high > highestLeft)
+                highestLeft = c.high;
+            if (c.low < lowestLeft)
+                lowestLeft = c.low;
         }
-        // Confirm Pivot Low (Swing Low)
-        // If the potential pivot's low is strictly less than all lows in the subsequent window
-        if (potentialPivot.low < lowestInWindow) {
-            this.activeSwingLow = potentialPivot.low;
+        for (let i = rightStart; i < rightEnd; i++) {
+            const c = candles[i];
+            if (!c)
+                continue;
+            if (c.high > highestRight)
+                highestRight = c.high;
+            if (c.low < lowestRight)
+                lowestRight = c.low;
+        }
+        // Confirm Pivot High: candidate must be strictly highest on BOTH sides
+        if (candidate.high > highestLeft && candidate.high > highestRight) {
+            this.activeSwingHigh = candidate.high;
+        }
+        // Confirm Pivot Low: candidate must be strictly lowest on BOTH sides
+        if (candidate.low < lowestLeft && candidate.low < lowestRight) {
+            this.activeSwingLow = candidate.low;
         }
     }
     getActiveSwingHigh() {
