@@ -388,6 +388,61 @@
     font-family: inherit;
     border: 1px solid var(--border);
   }
+  .exec-summary {
+    background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(16,185,129,0.05));
+    border: 1px solid rgba(59,130,246,0.3);
+    border-radius: 10px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    font-size: 13.5px;
+    line-height: 1.75;
+    color: var(--text);
+    white-space: pre-wrap;
+    font-family: inherit;
+  }
+  .exec-summary-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .alert-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+  }
+  .alert-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .alert-card-ticker {
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+  }
+  .alert-card-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    font-size: 12px;
+  }
+  .alert-card-body .kv { display: flex; flex-direction: column; gap: 2px; }
+  .alert-card-body .kv .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .alert-card-body .kv .v { color: var(--text); font-weight: 600; }
+  .alert-card-footer {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
 
   /* ── Footer ── */
   footer {
@@ -603,23 +658,40 @@ async function viewAlert(id) {
     const res = await fetch(API + '/alerts/' + id);
     const a = await res.json();
     const dirClass = a.direction === 'BULLISH' ? 'bull-text' : 'bear-text';
+    const dirIcon = a.direction === 'BULLISH' ? '▲' : '▼';
+    const eventColor = a.event_type === 'BOS' ? 'var(--accent)' : 'var(--gold)';
     const statusEl = a.status === 'sent' ? `<span class="status-sent">SENT</span>`
       : a.status === 'pending' ? `<span class="status-pending">PENDING</span>`
       : `<span class="status-failed">FAILED</span>`;
+    const tvLink = tvUrl(a.ticker);
 
     const html = `
-      <div class="detail-row"><span class="detail-lbl">Symbol</span><span class="detail-val">${a.ticker}</span></div>
-      <div class="detail-row"><span class="detail-lbl">Event</span><span class="detail-val">${a.event_type}</span></div>
-      <div class="detail-row"><span class="detail-lbl">Direction</span><span class="detail-val ${dirClass}">${a.direction}</span></div>
-      <div class="detail-row"><span class="detail-lbl">Price</span><span class="detail-val">${formatPrice(a.price)}</span></div>
-      <div class="detail-row"><span class="detail-lbl">Pivot Level</span><span class="detail-val">${formatPrice(a.pivot_level)}</span></div>
-      <div class="detail-row"><span class="detail-lbl">Time</span><span class="detail-val">${formatDateTime(a.created_at)}</span></div>
-      <div class="detail-row"><span class="detail-lbl">Status</span><span class="detail-val">${statusEl}</span></div>
-      <div style="margin-top:20px;text-align:center;">
-        <a href="${tvUrl(a.ticker)}" target="_blank" style="display:inline-block;padding:10px 20px;background:var(--accent);color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">Open Chart on TradingView</a>
+      <div style="margin-bottom:18px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <span style="font-size:22px;font-weight:800;color:#fff;">${a.ticker}</span>
+          <span style="font-size:14px;font-weight:700;color:${eventColor};background:rgba(59,130,246,0.12);padding:4px 12px;border-radius:6px;">${a.event_type}</span>
+        </div>
+        <div style="font-size:13px;color:var(--muted);">15-Minute Timeframe · ${formatDateTime(a.created_at)}</div>
+      </div>
+
+      <div class="alert-card">
+        <div class="alert-card-body" style="grid-template-columns:1fr 1fr 1fr;">
+          <div class="kv"><span class="k">Direction</span><span class="v ${dirClass}">${dirIcon} ${a.direction}</span></div>
+          <div class="kv"><span class="k">Breakout Price</span><span class="v">${formatPrice(a.price)}</span></div>
+          <div class="kv"><span class="k">Pivot Level Broken</span><span class="v">${formatPrice(a.pivot_level)}</span></div>
+        </div>
+        <div class="alert-card-footer">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:12px;color:var(--muted);">Notification Status</span>${statusEl}
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;text-align:center;">
+        <a href="${tvLink}" target="_blank" style="display:inline-block;padding:11px 24px;background:var(--accent);color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:13px;">📊 Open Chart on TradingView →</a>
       </div>
     `;
-    openModal('Alert Details', html);
+    openModal(`Alert Detail — ${a.ticker}`, html);
   } catch(e) { console.error(e); }
 }
 
@@ -629,26 +701,51 @@ async function viewEmail(id) {
     const e = await res.json();
     const statusEl = e.status === 'sent' ? `<span class="status-sent">DELIVERED</span>` : `<span class="status-failed">FAILED</span>`;
 
-    let alertsHtml = (e.alerts || []).map(a => `<li><b>${a.ticker}</b>: ${a.direction} ${a.event_type} @ ${formatPrice(a.price)}</li>`).join('');
-    if (!alertsHtml) alertsHtml = '<li>No alerts found for this email.</li>';
+    // Build alert cards
+    const alertCards = (e.alerts || []).map(a => {
+      const dirClass = a.direction === 'BULLISH' ? 'bull-text' : 'bear-text';
+      const dirIcon = a.direction === 'BULLISH' ? '▲' : '▼';
+      const eventColor = a.event_type === 'BOS' ? 'var(--accent)' : 'var(--gold)';
+      const tvLink = tvUrl(a.ticker);
+      return `
+        <div class="alert-card">
+          <div class="alert-card-header">
+            <span class="alert-card-ticker">${a.ticker}</span>
+            <span style="font-size:12px;font-weight:700;color:${eventColor};background:rgba(59,130,246,0.1);padding:3px 10px;border-radius:5px;">${a.event_type}</span>
+          </div>
+          <div class="alert-card-body">
+            <div class="kv"><span class="k">Direction</span><span class="v ${dirClass}">${dirIcon} ${a.direction}</span></div>
+            <div class="kv"><span class="k">Breakout Price</span><span class="v">${formatPrice(a.price)}</span></div>
+          </div>
+          <div class="alert-card-footer">
+            <a href="${tvLink}" target="_blank" style="font-size:12px;color:var(--accent);font-weight:600;text-decoration:none;">📊 View on TradingView →</a>
+          </div>
+        </div>`;
+    }).join('');
+
+    const noAlerts = !e.alerts || e.alerts.length === 0
+      ? `<p style="color:var(--muted);font-size:13px;">No alert records found.</p>` : '';
 
     const html = `
-      <div class="detail-row"><span class="detail-lbl">Sent At</span><span class="detail-val">${formatDateTime(e.sent_at)}</span></div>
-      <div class="detail-row"><span class="detail-lbl">Status</span><span class="detail-val">${statusEl}</span></div>
-      
-      <div style="margin-top:16px;">
-        <span class="detail-lbl">Alerts Included (${e.alert_count}):</span>
-        <ul style="margin-top:8px;padding-left:20px;color:var(--text);font-size:13px;line-height:1.6;">
-          ${alertsHtml}
-        </ul>
+      <!-- EXECUTIVE SUMMARY TOP -->
+      <div class="exec-summary">
+        <div class="exec-summary-label">🧠 AI Executive Summary · 15-Minute Timeframe</div>
+        ${e.ai_summary || 'Summary not available for this batch.'}
       </div>
 
-      <div style="margin-top:16px;">
-        <span class="detail-lbl">AI Summary:</span>
-        <div class="summary-box">${e.ai_summary || 'No summary available.'}</div>
+      <!-- META ROW -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <span style="font-size:12px;color:var(--muted);">${formatDateTime(e.sent_at)} · ${e.alert_count} alert${e.alert_count > 1 ? 's' : ''} batched</span>
+        ${statusEl}
+      </div>
+
+      <!-- ALERT CARDS -->
+      <div style="border-top:1px solid var(--border);padding-top:14px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:12px;">Confirmed Signals</div>
+        ${alertCards}${noAlerts}
       </div>
     `;
-    openModal('Email Details', html);
+    openModal(`Email Batch — ${e.alert_count} Signal${e.alert_count > 1 ? 's' : ''}`, html);
   } catch(err) { console.error(err); }
 }
 

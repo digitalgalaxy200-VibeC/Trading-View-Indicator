@@ -23,7 +23,7 @@ export const config = {
   // ── DeepSeek ──
   deepseekApiKey: requireEnv('DEEPSEEK_API_KEY'),
   deepseekModel: optionalEnv('DEEPSEEK_MODEL', 'deepseek-chat'),
-  deepseekMaxTokens: parseInt(optionalEnv('DEEPSEEK_MAX_TOKENS', '300'), 10),
+  deepseekMaxTokens: parseInt(optionalEnv('DEEPSEEK_MAX_TOKENS', '600'), 10),
   deepseekTemperature: parseFloat(optionalEnv('DEEPSEEK_TEMPERATURE', '0.3')),
 
   // ── Resend ──
