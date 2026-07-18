@@ -988,6 +988,7 @@ processMacroState() =>
             alert(buildWebhookJson('Bullish CHoCH', 'BULLISH', close, 'BEARISH', 'BULLISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
 // MACRO STATE MACHINE Replaces 50-length Swing
+getCurrentStructure(swingsLengthInput,false) // Restored to prevent uninitialized swingHigh crashes
 getCurrentStructure(5,false,true) // Process internal 5-bar pivots
 processMacroState()               // Process macro logic using internal pivots
 
