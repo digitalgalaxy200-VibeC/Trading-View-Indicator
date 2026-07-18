@@ -17,8 +17,8 @@ export const config = {
     .split(',')
     .map(s => s.trim())
     .filter(Boolean),
-  timeframe: parseInt(optionalEnv('TIMEFRAME', '900'), 10),  // candle granularity in seconds
-  pivotLength: parseInt(optionalEnv('PIVOT_LENGTH', '50'), 10),
+  timeframe: 900,  // FORCE 15-minute candles (900 seconds)
+  pivotLength: 50, // FORCE 50-candle pivot length
 
   // ── DeepSeek ──
   deepseekApiKey: requireEnv('DEEPSEEK_API_KEY'),
