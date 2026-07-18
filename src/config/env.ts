@@ -13,7 +13,7 @@ function optionalEnv(name: string, fallback: string): string {
 
 export const config = {
   // ── Deriv ──
-  symbols: (optionalEnv('SYMBOLS', 'R_100,R_75,R_50,R_25,R_10,1HZ100V,1HZ75V,1HZ50V,BOOM1000,BOOM500,CRASH1000,CRASH500'))
+  symbols: (optionalEnv('SYMBOLS', 'R_75,R_50,R_25,R_10,1HZ75V,1HZ50V,1HZ25V,1HZ15V,1HZ10V,1HZ30V,1HZ100V'))
     .split(',')
     .map(s => s.trim())
     .filter(Boolean),
