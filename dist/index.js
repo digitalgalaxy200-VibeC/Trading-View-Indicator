@@ -7,22 +7,25 @@ const eventRepository_1 = require("./db/eventRepository");
 const marketStateRepository_1 = require("./db/marketStateRepository");
 const derivClient_1 = require("./api/derivClient");
 const candleManager_1 = require("./engine/candleManager");
+const opportunityEngine_1 = require("./engine/opportunityEngine");
 const alertQueue_1 = require("./notification/alertQueue");
 const notificationEngine_1 = require("./notification/notificationEngine");
 const app_1 = require("./server/app");
 console.log('============================================');
-console.log('🚀 Market Structure Engine v2 Starting...');
+console.log('🚀 Market Structure Engine v3 Starting...');
 console.log(`Tracking ${env_1.config.symbols.length} Symbols: ${env_1.config.symbols.join(', ')}`);
-console.log(`Timeframe: ${env_1.config.timeframe}s | Pivot: ${env_1.config.pivotLength} bars`);
+console.log(`Timeframe: ${env_1.config.timeframe}s | Engine: True SMC Structure Engine`);
 console.log(`Notifications: every ${env_1.config.notificationCheckSeconds}s`);
 console.log('============================================');
 // ── Initialize database ──
 (0, schema_1.initializeDatabase)();
 // ── Shared Alert Queue ──
 const alertQueue = new alertQueue_1.AlertQueue();
-// ── Notification Engine ──
+// ── System 1: Notification Engine ──
 const notificationEngine = new notificationEngine_1.NotificationEngine(alertQueue);
 notificationEngine.start();
+// ── System 2: Opportunity Engine ──
+const opportunityEngine = new opportunityEngine_1.OpportunityEngine();
 // ── Deriv WebSocket Client ──
 const derivClient = new derivClient_1.DerivClient();
 const onEventDetected = (symbol, rawEvent) => {
@@ -51,6 +54,8 @@ const onEventDetected = (symbol, rawEvent) => {
     else {
         console.log(`  ⏭ Event is CHoCH. Suppressed from notification queue.`);
     }
+    // ── System 2: Evaluate active opportunities for this symbol ──
+    opportunityEngine.onEvent(event).catch(err => console.error('  ⚠️ OpportunityEngine event error:', err.message));
 };
 // ── Create CandleManager per symbol ──
 const managers = new Map();
@@ -67,6 +72,8 @@ derivClient.onCandleClosed((symbol, candle) => {
     const manager = managers.get(symbol);
     if (manager)
         manager.onNewCandleClosed(candle);
+    // Feed candle to OpportunityEngine
+    opportunityEngine.onCandle(symbol, candle).catch(err => console.error('  ⚠️ OpportunityEngine candle error:', err.message));
 });
 derivClient.connect();
 // ── Dashboard Server ──

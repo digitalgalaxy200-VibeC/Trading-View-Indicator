@@ -4,7 +4,7 @@ import { eventRepository } from '../../db/eventRepository';
 import { alertRepository } from '../../db/alertRepository';
 import { emailRepository } from '../../db/emailRepository';
 import { configRepository } from '../../db/configRepository';
-import { watchTaskRepository } from '../../db/watchTaskRepository';
+import { opportunityRepository } from '../../db/opportunityRepository';
 import { symbolRepository } from '../../db/symbolRepository';
 import { profileRepository } from '../../db/profileRepository';
 
@@ -113,36 +113,13 @@ stateRoutes.patch('/config', (req: Request, res: Response) => {
   }
 });
 
-// ── Watch Tasks (System 2) ──
+// ── Opportunities (System 2) ──
 
-stateRoutes.get('/watches', (_req: Request, res: Response) => {
+stateRoutes.get('/opportunities', (_req: Request, res: Response) => {
   try {
-    res.json(watchTaskRepository.getAll());
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-stateRoutes.post('/watches', (req: Request, res: Response) => {
-  try {
-    const { ticker, condition, timeframe, priority } = req.body;
-    if (!ticker || !condition) return res.status(400).json({ error: 'ticker and condition are required' });
-    
-    const symbolId = symbolRepository.getId(ticker);
-    if (!symbolId) return res.status(400).json({ error: `Unknown ticker: ${ticker}` });
-
-    const task = watchTaskRepository.insert(symbolId, condition, timeframe ?? '15m', priority ?? 'normal');
-    res.json(task);
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-stateRoutes.patch('/watches/:id/cancel', (req: Request, res: Response) => {
-  try {
-    const id = parseInt(req.params.id as string, 10);
-    watchTaskRepository.updateStatus(id, 'cancelled', 'Cancelled by user.');
-    res.json({ success: true });
+    // Show all active + triggered + recent invalidated/closed?
+    // Let's just show active for now.
+    res.json(opportunityRepository.getAllActive());
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

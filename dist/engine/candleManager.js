@@ -1,35 +1,36 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CandleManager = void 0;
-const pivotDetector_1 = require("./pivotDetector");
+const structureEngine_1 = require("./structureEngine");
 class CandleManager {
     candles = [];
-    detector;
+    engine;
     onEvent;
     initialized = false;
     constructor(onEvent, state) {
         this.onEvent = onEvent;
-        this.detector = new pivotDetector_1.PivotDetector(state || (0, pivotDetector_1.createInitialPivotState)());
+        this.engine = new structureEngine_1.StructureEngine(state || (0, structureEngine_1.createInitialStructureState)());
     }
     getState() {
-        return this.detector.getState();
+        return this.engine.getState();
     }
     initializeHistory(historicalCandles) {
         this.candles = historicalCandles.sort((a, b) => a.epoch - b.epoch);
         this.initialized = true;
         console.log(`  CandleManager: loaded ${this.candles.length} historical candles.`);
-        // Process historical candles to rebuild pivot state (but don't emit events for old data)
-        this.detector.process(this.candles);
+        // Silently process history to hydrate structural state — no events emitted
+        this.engine.process(this.candles);
     }
     onNewCandleClosed(candle) {
         if (!this.initialized)
             return;
         this.candles.push(candle);
-        // Keep only the last 200 candles to bound memory
-        if (this.candles.length > 200) {
-            this.candles = this.candles.slice(-200);
+        // Keep only the last 300 candles to bound memory
+        // (we need more than old engine since 3-bar pivot needs neighbours)
+        if (this.candles.length > 300) {
+            this.candles = this.candles.slice(-300);
         }
-        const events = this.detector.process(this.candles);
+        const events = this.engine.process(this.candles);
         for (const event of events) {
             this.onEvent(event);
         }

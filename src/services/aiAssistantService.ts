@@ -10,9 +10,9 @@
 import { config } from '../config/env';
 import { marketStateRepository } from '../db/marketStateRepository';
 import { eventRepository } from '../db/eventRepository';
-import { watchTaskRepository } from '../db/watchTaskRepository';
 import { symbolRepository } from '../db/symbolRepository';
 import { profileRepository } from '../db/profileRepository';
+import { opportunityRepository } from '../db/opportunityRepository';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 
@@ -32,12 +32,22 @@ CRITICAL DATA RULES — NEVER VIOLATE THESE:
 Your responsibilities:
 1. Answer questions about market structure using the live data tools.
 2. Explain why a specific event occurred in the context of the user's strategy.
-3. Create watch tasks based on what the user asks you to monitor.
+3. Check the Opportunity Watchlist to see if the market is setting up for a trade.
 4. Be concise, analytical, and use professional SMC terminology (BOS, CHoCH, swing high/low, impulse, correction, displacement, etc.).
 5. NEVER give buy/sell entry recommendations.
 6. ALWAYS end trading-related responses with: "The final trading decision belongs entirely to you."
 
-When you create a watch task, confirm clearly with: "Watch created: [condition]"`;
+### Opportunity Priority Rule
+If the user asks:
+* "What opportunities do I have?"
+* "Show my setups."
+* "Any trades?"
+* "What should I look at?"
+The AI MUST query the Opportunity Engine (using get_opportunities).
+It must NOT generate opportunities from CHOCH or BOS records.
+If there are active opportunities, they are the authoritative source.
+Only if there are zero active opportunities should the AI optionally say:
+"There are no active opportunities at the moment. The most recent structural events are..." and then discuss CHOCH/BOS.`;
 
 // Tool definitions for DeepSeek
 const TOOLS = [
@@ -67,25 +77,8 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'create_watch_task',
-      description: 'Create a personal watch task that will monitor the market and notify the user when their condition is met.',
-      parameters: {
-        type: 'object',
-        properties: {
-          ticker: { type: 'string', description: 'Instrument ticker e.g. R_75, R_50, 1HZ75V' },
-          condition: { type: 'string', description: 'The watch condition in plain English. E.g. "Notify me when a bearish continuation BOS occurs"' },
-          priority: { type: 'string', enum: ['high', 'normal', 'low'], description: 'Alert priority. Default normal.' },
-          timeframe: { type: 'string', description: 'Timeframe. Default 15m.' },
-        },
-        required: ['ticker', 'condition'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'list_watch_tasks',
-      description: 'List the user\'s current active watch tasks.',
+      name: 'get_opportunities',
+      description: 'Get the current Opportunity Watchlist automatically managed by the Opportunity Engine. Shows all active setups across all instruments.',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
@@ -111,20 +104,19 @@ function executeTool(name: string, args: any): string {
       ).join('\n');
     }
 
-    case 'create_watch_task': {
-      const { ticker, condition, priority = 'normal', timeframe = '15m' } = args;
-      const symbolId = symbolRepository.getId(ticker);
-      if (!symbolId) return `Unknown ticker: ${ticker}. Available: R_75, R_50, R_25, R_10, 1HZ75V, 1HZ50V, etc.`;
-      const task = watchTaskRepository.insert(symbolId, condition, timeframe, priority as any);
-      return `Watch task created successfully. ID: #${task.id} | Symbol: ${ticker} | Priority: ${priority} | Condition: "${condition}"`;
-    }
-
-    case 'list_watch_tasks': {
-      const tasks = watchTaskRepository.getActive();
-      if (tasks.length === 0) return 'You have no active watch tasks.';
-      return tasks.map(t =>
-        `#${t.id} [${t.priority.toUpperCase()}] ${t.ticker} — "${t.condition}" | Status: ${t.status} | Progress: ${t.progress_msg ?? 'Waiting...'}`
-      ).join('\n');
+    case 'get_opportunities': {
+      const opps = opportunityRepository.getAllActive();
+      if (opps.length === 0) return 'There are currently no active opportunities on the watchlist.';
+      
+      return opps.map(o => {
+        let details = `[${o.ticker}] ${o.direction} ${o.type} | Status: ${o.status}`;
+        if (o.entry_price) {
+          details += `\n  - Entry Zone (50%): ${o.entry_price.toFixed(4)}`;
+          details += `\n  - Stop Loss (0%): ${o.impulse_start_price?.toFixed(4)}`;
+          details += `\n  - Take Profit (100%): ${o.impulse_end_price?.toFixed(4)}`;
+        }
+        return details;
+      }).join('\n\n');
     }
 
     default:
@@ -151,18 +143,44 @@ export class AiAssistantService {
     // This ensures the AI ALWAYS has current data in context regardless of
     // whether it decides to call tools. Eliminates hallucinated prices.
     const liveMarketState = executeTool('get_market_state', {});
-    const liveRecentEvents = executeTool('get_recent_events', { limit: 15 });
-    const liveDataBlock = `
+    const liveOpportunities = executeTool('get_opportunities', {});
+    const hasActiveOpportunities = !liveOpportunities.includes('no active opportunities');
+
+    // Only inject raw events if there are NO active opportunities.
+    // When active opportunities exist, we deliberately hide raw events so the
+    // AI cannot use them as a source for generating setups.
+    const liveRecentEvents = hasActiveOpportunities
+      ? null
+      : executeTool('get_recent_events', { limit: 15 });
+
+    const liveDataBlock = hasActiveOpportunities
+      ? `
 == LIVE ENGINE DATA (Ground Truth — injected at ${new Date().toISOString()}) ==
 
 Current Market State:
 ${liveMarketState}
 
+ACTIVE OPPORTUNITY WATCHLIST — THIS IS YOUR ONLY SOURCE FOR TRADING SETUPS:
+${liveOpportunities}
+
+== END LIVE DATA ==
+STRICT RULE: Active opportunities are listed above. You MUST answer ALL setup/opportunity questions EXCLUSIVELY from this list.
+Do NOT mention any other instrument that is not in this list as a trading opportunity.
+Do NOT reference BOS or CHoCH events as opportunities. Only the Opportunity Watchlist is authoritative.`
+      : `
+== LIVE ENGINE DATA (Ground Truth — injected at ${new Date().toISOString()}) ==
+
+Current Market State:
+${liveMarketState}
+
+Active Opportunities (Opportunity Watchlist):
+There are currently no active opportunities. The engine is scanning the market.
+
 Most Recent Structural Events (newest first):
 ${liveRecentEvents}
 
 == END LIVE DATA ==
-IMPORTANT: The data above is the ONLY authoritative source of market prices and trend states. Never use any price or trend from conversation history — always use these live values.`;
+IMPORTANT: There are no active opportunities right now. You may discuss recent structural events for educational context only, but make clear that no setups have been confirmed by the Opportunity Engine.`;
 
     let dynamicSystemPrompt = `${SYSTEM_PROMPT}
 

@@ -89,23 +89,23 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
 );
 
-CREATE TABLE IF NOT EXISTS watch_tasks (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol_id     INTEGER NOT NULL REFERENCES symbols(id),
-    timeframe     TEXT NOT NULL DEFAULT '15m',
-    condition     TEXT NOT NULL,
-    priority      TEXT NOT NULL DEFAULT 'normal', -- 'high', 'normal', 'low'
-    status        TEXT NOT NULL DEFAULT 'waiting', -- 'waiting', 'triggered', 'invalidated', 'cancelled'
-    progress_msg  TEXT,
-    confidence    TEXT,
-    created_by    TEXT NOT NULL DEFAULT 'AI Conversation',
-    created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
-    updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
-    expires_at    INTEGER
+CREATE TABLE IF NOT EXISTS opportunities (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol_id           INTEGER NOT NULL REFERENCES symbols(id),
+    type                TEXT NOT NULL, -- 'REVERSAL' or 'CONTINUATION'
+    status              TEXT NOT NULL, -- 'LEVEL_1', 'LEVEL_2', 'TRIGGERED', 'INVALIDATED', 'CLOSED'
+    direction           TEXT NOT NULL, -- 'BULLISH' or 'BEARISH'
+    impulse_start_price REAL, -- The structural floor/ceiling (0% Fib / Stop Loss)
+    impulse_end_price   REAL, -- The extreme of the impulse (100% Fib)
+    entry_price         REAL, -- The 50% Fib level
+    score               INTEGER,
+    score_breakdown     TEXT, -- JSON explaining the score
+    detected_at         INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+    updated_at          INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
 );
 
-CREATE INDEX IF NOT EXISTS idx_watch_tasks_status ON watch_tasks(status);
-CREATE INDEX IF NOT EXISTS idx_watch_tasks_symbol ON watch_tasks(symbol_id);
+CREATE INDEX IF NOT EXISTS idx_opportunities_status ON opportunities(status);
+CREATE INDEX IF NOT EXISTS idx_opportunities_symbol ON opportunities(symbol_id);
 
 CREATE TABLE IF NOT EXISTS trading_profile (
     id          INTEGER PRIMARY KEY CHECK (id = 1),

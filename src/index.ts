@@ -6,17 +6,17 @@ import { marketStateRepository } from './db/marketStateRepository';
 import { DerivClient } from './api/derivClient';
 import { CandleManager } from './engine/candleManager';
 import { ConfirmationLayer } from './engine/confirmationLayer';
-import { WatchTaskEngine } from './engine/watchTaskEngine';
+import { OpportunityEngine } from './engine/opportunityEngine';
 import { AlertQueue } from './notification/alertQueue';
 import { NotificationEngine } from './notification/notificationEngine';
-import { OpportunityEngine } from './opportunity/opportunityEngine';
 import { startServer } from './server/app';
 import { BreakoutEvent } from './types';
 
 console.log('============================================');
-console.log('🚀 Market Structure Engine v4 — Opportunity Engine Active');
+console.log('🚀 Market Structure Engine v3 Starting...');
 console.log(`Tracking ${config.symbols.length} Symbols: ${config.symbols.join(', ')}`);
-console.log(`Timeframe: ${config.timeframe}s | Pivot: ${config.pivotLength} bars`);
+console.log(`Timeframe: ${config.timeframe}s | Engine: True SMC Structure Engine`);
+console.log(`Notifications: every ${config.notificationCheckSeconds}s`);
 console.log('============================================');
 
 // ── Initialize database ──
@@ -25,27 +25,12 @@ initializeDatabase();
 // ── Shared Alert Queue ──
 const alertQueue = new AlertQueue();
 
-// ── Notification Engine ──
+// ── System 1: Notification Engine ──
 const notificationEngine = new NotificationEngine(alertQueue);
 notificationEngine.start();
 
-// ── Watch Task Engine ──
-const watchTaskEngine = new WatchTaskEngine();
-watchTaskEngine.start();
-
-// ── V4: Opportunity Engine ──
+// ── System 2: Opportunity Engine ──
 const opportunityEngine = new OpportunityEngine();
-
-// L3 callback — when an opportunity reaches trade-ready status
-opportunityEngine.onLevel3(async (opp) => {
-  const symbol = symbolRepository.getAll().find(s => s.id === opp.symbol_id);
-  const ticker = symbol?.ticker || 'Unknown';
-  console.log(`\n🎯 OPPORTUNITY L3: ${ticker} ${opp.direction} ${opp.workflow_type}`);
-  console.log(`   Entry: ${opp.entry_price?.toFixed(2)} | SL: ${opp.stop_loss?.toFixed(2)} | TP: ${opp.take_profit?.toFixed(2)} | R:R ${opp.risk_reward}`);
-
-  // Queue for notification — the NotificationEngine will handle batching + AI scoring
-  alertQueue.enqueueOpportunity(opp);
-});
 
 // ── Deriv WebSocket Client ──
 const derivClient = new DerivClient();
@@ -72,12 +57,17 @@ const onEventDetected = (symbol: string, rawEvent: Omit<BreakoutEvent, 'symbol'>
   const isChoch = event.event.toUpperCase().includes('CHOCH');
   marketStateRepository.upsert(symbolId, event.trendAfter, event.price, isChoch);
 
-  // ── V4: Feed event to Opportunity Engine (manages L1→L2→L3 pipeline) ──
-  opportunityEngine.handleEvent(symbol, event);
+  // Enqueue alert for notification ONLY IF it's a BOS event
+  if (event.event.includes('BOS')) {
+    alertQueue.enqueue(eventRow.id);
+    console.log(`  📬 Alert queued (pending: ${alertQueue.count()})`);
+  } else {
+    console.log(`  ⏭ Event is CHoCH. Suppressed from notification queue.`);
+  }
 
-  // Evaluate watch tasks
-  watchTaskEngine.onEvent(event).catch(err =>
-    console.error('  ⚠️ WatchTaskEngine error:', err.message)
+  // ── System 2: Evaluate active opportunities for this symbol ──
+  opportunityEngine.onEvent(event).catch(err =>
+    console.error('  ⚠️ OpportunityEngine event error:', err.message)
   );
 };
 
@@ -97,9 +87,11 @@ derivClient.onHistory((symbol, candles) => {
 derivClient.onCandleClosed((symbol, candle) => {
   const manager = managers.get(symbol);
   if (manager) manager.onNewCandleClosed(candle);
-
-  // ── V4: Monitor retracement on every candle close ──
-  opportunityEngine.monitorRetracement(symbol, candle.close);
+  
+  // Feed candle to OpportunityEngine
+  opportunityEngine.onCandle(symbol, candle).catch(err =>
+    console.error('  ⚠️ OpportunityEngine candle error:', err.message)
+  );
 });
 
 derivClient.connect();
@@ -111,12 +103,10 @@ startServer();
 process.on('SIGINT', () => {
   console.log('\nShutting down...');
   notificationEngine.stop();
-  watchTaskEngine.stop();
   process.exit(0);
 });
 process.on('SIGTERM', () => {
   console.log('\nShutting down...');
   notificationEngine.stop();
-  watchTaskEngine.stop();
   process.exit(0);
 });

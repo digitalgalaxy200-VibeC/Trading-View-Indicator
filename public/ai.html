@@ -194,14 +194,14 @@
       </div>
     </div>
 
-    <!-- Watch Tasks Panel -->
+    <!-- Opportunity Watchlist Panel -->
     <div class="watches-panel">
       <div class="panel-header">
-        <h3>Active Watches</h3>
+        <h3>Opportunity Watchlist</h3>
         <span class="panel-badge" id="watch-count">0</span>
       </div>
       <div class="watches-list" id="watches-list">
-        <div class="no-watches">No active watch tasks.<br>Ask the AI to watch a setup for you.</div>
+        <div class="no-watches">No active opportunities.<br>The engine is scanning the market for you.</div>
       </div>
     </div>
     
@@ -220,7 +220,7 @@
   </button>
   <button class="nav-btn" id="nav-watches" onclick="switchMobileView('watches')">
     <span class="nav-icon">📋</span>
-    <span class="nav-label">Watches</span>
+    <span class="nav-label">Watchlist</span>
   </button>
 </div>
 
@@ -416,37 +416,34 @@
     else document.getElementById('chat-inp').focus();
   }
 
-  // ── Watch Tasks ──
+  // ── Opportunities ──
   async function loadWatches() {
-    const tasks = await fetch('/api/watches').then(r => r.json()).catch(() => []);
-    const active = tasks.filter(t => t.status === 'waiting');
+    const opps = await fetch('/api/opportunities').then(r => r.json()).catch(() => []);
+    const active = opps.filter(o => o.status !== 'INVALIDATED' && o.status !== 'CLOSED');
     document.getElementById('watch-count').textContent = active.length;
 
     const list = document.getElementById('watches-list');
-    if (tasks.length === 0) {
-      list.innerHTML = '<div class="no-watches">No watch tasks yet.<br>Ask the AI to watch a setup for you.</div>';
+    if (opps.length === 0) {
+      list.innerHTML = '<div class="no-watches">No active opportunities.<br>The engine is scanning the market for you.</div>';
       return;
     }
 
-    list.innerHTML = tasks.slice(0, 20).map(t => `
+    list.innerHTML = opps.slice(0, 20).map(o => `
       <div class="watch-card">
         <div class="watch-top">
-          <span class="watch-ticker">${escHtml(t.ticker)} <span style="font-weight:400;color:var(--muted);font-size:11px;">${t.timeframe}</span></span>
+          <span class="watch-ticker">${escHtml(o.ticker)} <span style="font-weight:400;color:var(--muted);font-size:11px;">${o.direction} ${o.type}</span></span>
           <div style="display:flex;gap:4px;flex-direction:column;align-items:flex-end;">
-            <span class="badge ${t.status}">${t.status}</span>
-            <span class="badge ${t.priority}">${t.priority}</span>
+            <span class="badge ${o.status.toLowerCase()}">${o.status}</span>
           </div>
         </div>
-        <div class="watch-cond">"${escHtml(t.condition)}"</div>
-        ${t.progress_msg ? `<div class="watch-prog">${escHtml(t.progress_msg)}</div>` : ''}
-        ${t.status === 'waiting' ? `<div class="watch-cancel"><button class="cancel-btn" onclick="cancelWatch(${t.id})">Cancel</button></div>` : ''}
+        ${o.entry_price ? `
+        <div class="watch-cond">
+          Entry: ${o.entry_price.toFixed(4)}<br>
+          SL: ${o.impulse_start_price?.toFixed(4)}<br>
+          TP: ${o.impulse_end_price?.toFixed(4)}
+        </div>` : '<div class="watch-cond">Building structural impulse...</div>'}
       </div>
     `).join('');
-  }
-
-  async function cancelWatch(id) {
-    await fetch(`/api/watches/${id}/cancel`, { method: 'PATCH' });
-    loadWatches();
   }
 
   // ── Utils ──
