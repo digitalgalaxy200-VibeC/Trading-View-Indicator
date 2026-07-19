@@ -4,7 +4,7 @@ import { eventRepository } from '../../db/eventRepository';
 import { alertRepository } from '../../db/alertRepository';
 import { emailRepository } from '../../db/emailRepository';
 import { configRepository } from '../../db/configRepository';
-import { opportunityRepository } from '../../db/opportunityRepository';
+import { watchTaskRepository } from '../../db/watchTaskRepository';
 import { symbolRepository } from '../../db/symbolRepository';
 import { profileRepository } from '../../db/profileRepository';
 import { opportunityRepository } from '../../db/opportunityRepository';

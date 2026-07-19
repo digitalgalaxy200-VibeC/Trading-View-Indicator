@@ -4,6 +4,7 @@ import { DeepSeekClient } from '../api/deepseekClient';
 import { sendBatchEmail, sendOpportunityEmail } from './emailDispatcher';
 import { emailRepository } from '../db/emailRepository';
 import { configRepository } from '../db/configRepository';
+import { opportunityRepository } from '../db/opportunityRepository';
 import { config } from '../config/env';
 
 export class NotificationEngine {
@@ -78,8 +79,7 @@ export class NotificationEngine {
 
         const result = await sendOpportunityEmail(opp, scoreText);
         if (result.success) {
-          const { opportunityRepository } = await import('../db/opportunityRepository');
-          opportunityRepository.update(opp.id, { status: 'notified', notified_at: Date.now() });
+          opportunityRepository.updateStatus(opp.id, 'TRIGGERED');
         }
 
         const emailRow = emailRepository.insert(1, scoreText, result.resendId || null, result.success ? 'sent' : 'failed');
