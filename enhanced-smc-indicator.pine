@@ -881,107 +881,129 @@ if showHighLowSwingsInput or showPremiumDiscountZonesInput
 if showFairValueGapsInput
     deleteFairValueGaps()
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EXTERNAL STRUCTURE MODEL — 5-Phase Swing Classification Pipeline
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1: Raw Swing Detection   (5-bar pivot math via getCurrentStructure)
+// Phase 2: Swing Classification  (is this pivot structurally significant?)
+// Phase 3: External Structure    (anchorHigh / anchorLow updated only by classified swings)
+// Phase 4: BOS / CHOCH Detection (close vs. anchors)
+// Phase 5: Trend State Update    (flip on CHOCH, continue on BOS)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// CLASSIFICATION RULE:
+//   BULLISH trend → anchorHigh updates only on Higher Highs (extends the ceiling)
+//                 → anchorLow  updates only on Higher Lows  (rising floor, confirms trend)
+//                 → Lower Highs / Lower Lows = internal noise → ignored
+//
+//   BEARISH trend → anchorLow  updates only on Lower Lows  (extends the floor downward)
+//                 → anchorHigh updates only on Lower Highs (falling ceiling, confirms trend)
+//                 → Higher Lows / Higher Highs = internal noise → ignored
+// ─────────────────────────────────────────────────────────────────────────────
+
 type MacroState
-    int trend
-    float externalHigh
-    int externalHighTime
-    float externalLow
-    int externalLowTime
-    float candidateHigh
-    int candidateHighTime
-    float candidateLow
-    int candidateLowTime
-    int lastInternalHighTime
-    int lastInternalLowTime
+    int   trend
+    float anchorHigh       // Current structural ceiling
+    int   anchorHighTime
+    float anchorLow        // Current structural floor
+    int   anchorLowTime
+    int   lastHighTime     // Deduplication: last processed raw pivot high time
+    int   lastLowTime      // Deduplication: last processed raw pivot low time
 
-var MacroState mState = MacroState.new(BEARISH, na, na, na, na, na, na, na, na, na, na)
+var MacroState mState = MacroState.new(BEARISH, na, na, na, na, na, na)
 
-// @function processMacroState
+// @function processMacroState — runs on every bar close
 processMacroState() =>
-    if internalHigh.barTime != mState.lastInternalHighTime
-        mState.lastInternalHighTime := internalHigh.barTime
-        
-        if na(mState.candidateHigh) or internalHigh.currentLevel > mState.candidateHigh
-            mState.candidateHigh := internalHigh.currentLevel
-            mState.candidateHighTime := internalHigh.barTime
-            
-        if mState.trend == BULLISH and na(mState.externalHigh)
-            mState.externalHigh := internalHigh.currentLevel
-            mState.externalHighTime := internalHigh.barTime
+    // ── PHASE 2 & 3: Swing Classification → External Structure Update ─────────
 
-    if internalLow.barTime != mState.lastInternalLowTime
-        mState.lastInternalLowTime := internalLow.barTime
-        
-        if na(mState.candidateLow) or internalLow.currentLevel < mState.candidateLow
-            mState.candidateLow := internalLow.currentLevel
-            mState.candidateLowTime := internalLow.barTime
-            
-        if mState.trend == BEARISH and na(mState.externalLow)
-            mState.externalLow := internalLow.currentLevel
-            mState.externalLowTime := internalLow.barTime
+    if internalHigh.barTime != mState.lastHighTime
+        mState.lastHighTime := internalHigh.barTime
+        pivH = internalHigh.currentLevel
 
-    bullishBOS = mState.trend == BULLISH and not na(mState.externalHigh) and close > mState.externalHigh
-    bearishCHOCH = mState.trend == BULLISH and not na(mState.externalLow) and close < mState.externalLow
-    bearishBOS = mState.trend == BEARISH and not na(mState.externalLow) and close < mState.externalLow
-    bullishCHOCH = mState.trend == BEARISH and not na(mState.externalHigh) and close > mState.externalHigh
-    
+        if mState.trend == BULLISH
+            // Structural only if it is a Higher High (extends the bullish ceiling)
+            if na(mState.anchorHigh) or pivH > mState.anchorHigh
+                mState.anchorHigh     := pivH
+                mState.anchorHighTime := internalHigh.barTime
+            // Lower Highs in bullish = internal → ignored
+
+        else // BEARISH
+            // Structural only if it is a Lower High (falling ceiling confirms bearish trend)
+            if na(mState.anchorHigh) or pivH < mState.anchorHigh
+                mState.anchorHigh     := pivH
+                mState.anchorHighTime := internalHigh.barTime
+            // Higher Highs in bearish = noise → ignored (CHOCH caught by close check)
+
+    if internalLow.barTime != mState.lastLowTime
+        mState.lastLowTime := internalLow.barTime
+        pivL = internalLow.currentLevel
+
+        if mState.trend == BULLISH
+            // Structural only if it is a Higher Low (rising floor confirms bullish trend)
+            if na(mState.anchorLow) or pivL > mState.anchorLow
+                mState.anchorLow     := pivL
+                mState.anchorLowTime := internalLow.barTime
+            // Lower Lows in bullish = noise → ignored (CHOCH caught by close check)
+
+        else // BEARISH
+            // Structural only if it is a Lower Low (extends the bearish floor downward)
+            if na(mState.anchorLow) or pivL < mState.anchorLow
+                mState.anchorLow     := pivL
+                mState.anchorLowTime := internalLow.barTime
+            // Higher Lows in bearish = internal → ignored
+
+    // ── PHASE 4 & 5: BOS / CHOCH Detection & Trend State ────────────────────
+
+    bullishBOS   = mState.trend == BULLISH and not na(mState.anchorHigh) and close > mState.anchorHigh
+    bearishCHOCH = mState.trend == BULLISH and not na(mState.anchorLow)  and close < mState.anchorLow
+    bearishBOS   = mState.trend == BEARISH and not na(mState.anchorLow)  and close < mState.anchorLow
+    bullishCHOCH = mState.trend == BEARISH and not na(mState.anchorHigh) and close > mState.anchorHigh
+
     if bullishBOS
-        brokenLevel = mState.externalHigh
-        brokenTime = mState.externalHighTime
-        if not na(mState.candidateLow)
-            mState.externalLow := mState.candidateLow
-            mState.externalLowTime := mState.candidateLowTime
-        mState.externalHigh := na
-        mState.candidateHigh := na
-        mState.candidateLow := na
-        
+        // Trend continues bullish. Ceiling broken → reset it. Floor (Higher Low) stays.
+        brokenLevel = mState.anchorHigh
+        brokenTime  = mState.anchorHighTime
+        mState.anchorHigh     := na
+        mState.anchorHighTime := na
+
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, "BOS", swingBullColorInput, label.style_label_down, swingStructureSize)
         if webhookEnabledInput
             alert(buildWebhookJson('Bullish BOS', 'BULLISH', close, 'BULLISH', 'BULLISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
     else if bearishCHOCH
-        brokenLevel = mState.externalLow
-        brokenTime = mState.externalLowTime
+        // Trend reverses. Floor broken → flip to BEARISH. Failed ceiling stays as resistance.
+        brokenLevel  = mState.anchorLow
+        brokenTime   = mState.anchorLowTime
         mState.trend := BEARISH
-        if not na(mState.candidateHigh)
-            mState.externalHigh := mState.candidateHigh
-            mState.externalHighTime := mState.candidateHighTime
-        mState.externalLow := na
-        mState.candidateHigh := na
-        mState.candidateLow := na
-        
+        mState.anchorLow     := na
+        mState.anchorLowTime := na
+
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, "CHoCH", swingBearColorInput, label.style_label_up, swingStructureSize)
         if webhookEnabledInput
             alert(buildWebhookJson('Bearish CHoCH', 'BEARISH', close, 'BULLISH', 'BEARISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
     else if bearishBOS
-        brokenLevel = mState.externalLow
-        brokenTime = mState.externalLowTime
-        if not na(mState.candidateHigh)
-            mState.externalHigh := mState.candidateHigh
-            mState.externalHighTime := mState.candidateHighTime
-        mState.externalLow := na
-        mState.candidateHigh := na
-        mState.candidateLow := na
-        
+        // Trend continues bearish. Floor broken → reset it. Ceiling (Lower High) stays.
+        brokenLevel = mState.anchorLow
+        brokenTime  = mState.anchorLowTime
+        mState.anchorLow     := na
+        mState.anchorLowTime := na
+
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, "BOS", swingBearColorInput, label.style_label_up, swingStructureSize)
         if webhookEnabledInput
             alert(buildWebhookJson('Bearish BOS', 'BEARISH', close, 'BEARISH', 'BEARISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
     else if bullishCHOCH
-        brokenLevel = mState.externalHigh
-        brokenTime = mState.externalHighTime
+        // Trend reverses. Ceiling broken → flip to BULLISH. Failed floor stays as support.
+        brokenLevel  = mState.anchorHigh
+        brokenTime   = mState.anchorHighTime
         mState.trend := BULLISH
-        if not na(mState.candidateLow)
-            mState.externalLow := mState.candidateLow
-            mState.externalLowTime := mState.candidateLowTime
-        mState.externalHigh := na
-        mState.candidateHigh := na
-        mState.candidateLow := na
-        
+        mState.anchorHigh     := na
+        mState.anchorHighTime := na
+
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, "CHoCH", swingBullColorInput, label.style_label_down, swingStructureSize)
         if webhookEnabledInput
@@ -989,8 +1011,8 @@ processMacroState() =>
 
 // MACRO STATE MACHINE Replaces 50-length Swing
 getCurrentStructure(swingsLengthInput,false) // Restored to prevent uninitialized swingHigh crashes
-getCurrentStructure(5,false,true) // Process internal 5-bar pivots
-processMacroState()               // Process macro logic using internal pivots
+getCurrentStructure(5,false,true) // Phase 1: raw 5-bar pivot detection
+processMacroState()               // Phases 2-5: classify → structure → breakout → state
 
 if showEqualHighsLowsInput
     getCurrentStructure(equalHighsLowsLengthInput,true)
