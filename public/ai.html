@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Trend Assistant — Analyst Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e1a;
+    --bg2: #111827;
+    --bg3: #1a2235;
+    --border: #1e2d45;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --accent: #8b5cf6; /* Purple for AI */
+    --bull: #10b981;
+    --bear: #ef4444;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+  }
+  .logo { font-size: 16px; font-weight: 700; color: #fff; }
+  .logo span { color: var(--accent); }
+  .header-right { display: flex; gap: 16px; align-items: center; }
+  .action-btn {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  main {
+    flex: 1;
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr 350px;
+    gap: 24px;
+  }
+  .panel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panel-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    color: #fff;
+    background: var(--bg3);
+  }
+  /* Chat styles */
+  .chat-box {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .msg { max-width: 80%; padding: 12px; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+  .msg.user { background: var(--bg3); border: 1px solid var(--border); align-self: flex-end; }
+  .msg.ai { background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); align-self: flex-start; }
+  .chat-input {
+    padding: 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 12px;
+  }
+  .chat-input input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: #fff;
+    padding: 12px;
+    border-radius: 6px;
+    font-family: inherit;
+  }
+  .chat-input button {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 0 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  /* Watches */
+  .watches { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+  .watch-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 12px;
+  }
+  .w-title { color: #fff; font-weight: 600; margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+  .badge.waiting { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+  .badge.high { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+  .w-cond { color: var(--muted); margin-bottom: 8px; }
+  .w-prog { font-size: 11px; color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🧠 AI Trading <span>Assistant</span></div>
+  <div class="header-right">
+    <a href="/" class="action-btn" style="background: var(--bg3); color: var(--muted);">← View Engine Dashboard</a>
+  </div>
+</header>
+
+<main>
+  <!-- Chat Panel -->
+  <div class="panel">
+    <div class="panel-header">Conversation with Analyst</div>
+    <div class="chat-box" id="chat">
+      <div class="msg ai">Hello! I am your AI Trading Assistant. How can I help you analyze the market today?</div>
+    </div>
+    <div class="chat-input">
+      <input type="text" id="chat-inp" placeholder="Ask to analyze a setup, or create a watch task...">
+      <button onclick="sendChat()">Send</button>
+    </div>
+  </div>
+
+  <!-- Watch Tasks Panel -->
+  <div class="panel">
+    <div class="panel-header">Active Watches</div>
+    <div class="watches" id="watches">
+      <!-- Dummy for now until wired -->
+      <div class="watch-card">
+        <div class="w-title">
+          <span>Volatility 75 (15m)</span>
+          <span class="badge waiting">Waiting</span>
+        </div>
+        <div class="w-cond">Wait for 50% retracement of last bearish BOS.</div>
+        <div class="w-prog">Progress: Price has retraced 34%</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+  function sendChat() {
+    const inp = document.getElementById('chat-inp');
+    const val = inp.value.trim();
+    if (!val) return;
+    
+    const chat = document.getElementById('chat');
+    chat.innerHTML += `<div class="msg user">${val}</div>`;
+    inp.value = '';
+    
+    // Simulate thinking
+    setTimeout(() => {
+      chat.innerHTML += `<div class="msg ai">I have received your request. Backend LLM wiring is currently in progress.</div>`;
+      chat.scrollTop = chat.scrollHeight;
+    }, 1000);
+    chat.scrollTop = chat.scrollHeight;
+  }
+</script>
+</body>
+</html>
