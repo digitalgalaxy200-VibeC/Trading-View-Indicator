@@ -1,5 +1,5 @@
 import { Candle } from '../types';
-import { PivotDetector, PivotState, createInitialPivotState } from './pivotDetector';
+import { StructureEngine, StructureState, createInitialStructureState } from './structureEngine';
 
 export type EventHandler = (event: {
   event: 'Bullish CHoCH' | 'Bullish BOS' | 'Bearish CHoCH' | 'Bearish BOS';
@@ -13,17 +13,17 @@ export type EventHandler = (event: {
 
 export class CandleManager {
   private candles: Candle[] = [];
-  private detector: PivotDetector;
+  private engine: StructureEngine;
   private onEvent: EventHandler;
   private initialized = false;
 
-  constructor(onEvent: EventHandler, state?: PivotState) {
+  constructor(onEvent: EventHandler, state?: StructureState) {
     this.onEvent = onEvent;
-    this.detector = new PivotDetector(state || createInitialPivotState());
+    this.engine = new StructureEngine(state || createInitialStructureState());
   }
 
-  getState(): PivotState {
-    return this.detector.getState();
+  getState(): StructureState {
+    return this.engine.getState();
   }
 
   initializeHistory(historicalCandles: Candle[]): void {
@@ -31,8 +31,8 @@ export class CandleManager {
     this.initialized = true;
     console.log(`  CandleManager: loaded ${this.candles.length} historical candles.`);
 
-    // Process historical candles to rebuild pivot state (but don't emit events for old data)
-    this.detector.process(this.candles);
+    // Silently process history to hydrate structural state — no events emitted
+    this.engine.process(this.candles);
   }
 
   onNewCandleClosed(candle: Candle): void {
@@ -40,12 +40,13 @@ export class CandleManager {
 
     this.candles.push(candle);
 
-    // Keep only the last 200 candles to bound memory
-    if (this.candles.length > 200) {
-      this.candles = this.candles.slice(-200);
+    // Keep only the last 300 candles to bound memory
+    // (we need more than old engine since 3-bar pivot needs neighbours)
+    if (this.candles.length > 300) {
+      this.candles = this.candles.slice(-300);
     }
 
-    const events = this.detector.process(this.candles);
+    const events = this.engine.process(this.candles);
     for (const event of events) {
       this.onEvent(event);
     }

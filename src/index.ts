@@ -13,9 +13,9 @@ import { startServer } from './server/app';
 import { BreakoutEvent } from './types';
 
 console.log('============================================');
-console.log('🚀 Market Structure Engine v2 Starting...');
+console.log('🚀 Market Structure Engine v3 Starting...');
 console.log(`Tracking ${config.symbols.length} Symbols: ${config.symbols.join(', ')}`);
-console.log(`Timeframe: ${config.timeframe}s | Pivot: ${config.pivotLength} bars`);
+console.log(`Timeframe: ${config.timeframe}s | Engine: True SMC Structure Engine`);
 console.log(`Notifications: every ${config.notificationCheckSeconds}s`);
 console.log('============================================');
 
