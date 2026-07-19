@@ -117,31 +117,25 @@ INSERT OR IGNORE INTO trading_profile (id, content) VALUES (1, 'I use Smart Mone
 
 -- V4: Opportunity Engine
 
-CREATE TABLE IF NOT EXISTS opportunities (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol_id       INTEGER NOT NULL REFERENCES symbols(id),
-    direction       TEXT NOT NULL,
-    workflow_type   TEXT NOT NULL CHECK (workflow_type IN ('reversal','continuation')),
-    watch_level     INTEGER NOT NULL DEFAULT 1 CHECK (watch_level IN (1,2,3)),
-    status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','notified','expired')),
-    choch_event_id  INTEGER REFERENCES events(id),
-    bos_event_id    INTEGER REFERENCES events(id),
-    impulse_high    REAL,
-    impulse_low     REAL,
-    fib_0           REAL,
-    fib_50          REAL,
-    fib_100         REAL,
-    entry_price     REAL,
-    stop_loss       REAL,
-    take_profit     REAL,
-    risk_reward     REAL,
-    created_at      INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
-    updated_at      INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
-    notified_at     INTEGER
+DROP TABLE IF EXISTS opportunities;
+
+CREATE TABLE opportunities (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol_id           INTEGER NOT NULL REFERENCES symbols(id),
+    type                TEXT NOT NULL CHECK (type IN ('REVERSAL','CONTINUATION')),
+    status              TEXT NOT NULL DEFAULT 'LEVEL_1' CHECK (status IN ('LEVEL_1','LEVEL_2','TRIGGERED','INVALIDATED','CLOSED')),
+    direction           TEXT NOT NULL CHECK (direction IN ('BULLISH','BEARISH')),
+    impulse_start_price REAL,
+    impulse_end_price   REAL,
+    entry_price         REAL,
+    score               REAL,
+    score_breakdown     TEXT,
+    detected_at         INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+    updated_at          INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
 );
 
-CREATE INDEX IF NOT EXISTS idx_opps_watch_level ON opportunities(watch_level, status);
-CREATE INDEX IF NOT EXISTS idx_opps_symbol      ON opportunities(symbol_id);
+CREATE INDEX IF NOT EXISTS idx_opps_status  ON opportunities(status);
+CREATE INDEX IF NOT EXISTS idx_opps_symbol  ON opportunities(symbol_id);
 `;
 
 const DEFAULT_SYMBOLS: { ticker: string; label: string }[] = [
