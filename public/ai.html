@@ -4,127 +4,90 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI Trend Assistant — Analyst Dashboard</title>
+<meta name="description" content="AI Trading Assistant — personal analyst for SMC-based market structure analysis.">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0a0e1a;
-    --bg2: #111827;
-    --bg3: #1a2235;
-    --border: #1e2d45;
-    --text: #e2e8f0;
-    --muted: #64748b;
-    --accent: #8b5cf6; /* Purple for AI */
-    --bull: #10b981;
-    --bear: #ef4444;
+    --bg: #0a0e1a; --bg2: #111827; --bg3: #1a2235; --border: #1e2d45;
+    --text: #e2e8f0; --muted: #64748b;
+    --accent: #8b5cf6; --accent2: #a78bfa;
+    --bull: #10b981; --bear: #ef4444; --gold: #f59e0b;
   }
   * { margin:0; padding:0; box-sizing:border-box; }
-  body {
-    font-family: 'Inter', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-  }
-  header {
-    background: var(--bg2);
-    border-bottom: 1px solid var(--border);
-    padding: 0 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 60px;
-  }
-  .logo { font-size: 16px; font-weight: 700; color: #fff; }
-  .logo span { color: var(--accent); }
-  .header-right { display: flex; gap: 16px; align-items: center; }
-  .action-btn {
-    background: var(--bg3);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 6px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-    text-decoration: none;
-  }
-  main {
-    flex: 1;
-    padding: 24px;
-    max-width: 1400px;
-    margin: 0 auto;
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1fr 350px;
-    gap: 24px;
-  }
-  .panel {
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .panel-header {
-    padding: 16px;
-    border-bottom: 1px solid var(--border);
-    font-weight: 600;
-    color: #fff;
-    background: var(--bg3);
-  }
-  /* Chat styles */
-  .chat-box {
-    flex: 1;
-    padding: 16px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-  .msg { max-width: 80%; padding: 12px; border-radius: 8px; font-size: 14px; line-height: 1.5; }
-  .msg.user { background: var(--bg3); border: 1px solid var(--border); align-self: flex-end; }
-  .msg.ai { background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); align-self: flex-start; }
-  .chat-input {
-    padding: 16px;
-    border-top: 1px solid var(--border);
-    display: flex;
-    gap: 12px;
-  }
-  .chat-input input {
-    flex: 1;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: #fff;
-    padding: 12px;
-    border-radius: 6px;
-    font-family: inherit;
-  }
-  .chat-input button {
-    background: var(--accent);
-    color: #fff;
-    border: none;
-    padding: 0 20px;
-    border-radius: 6px;
-    font-weight: 600;
-    cursor: pointer;
-  }
-  /* Watches */
-  .watches { padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
-  .watch-card {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    padding: 12px;
-    border-radius: 8px;
-    font-size: 12px;
-  }
-  .w-title { color: #fff; font-weight: 600; margin-bottom: 4px; display: flex; justify-content: space-between; }
-  .badge { padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; }
-  .badge.waiting { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
-  .badge.high { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
-  .w-cond { color: var(--muted); margin-bottom: 8px; }
-  .w-prog { font-size: 11px; color: var(--accent); }
+  body { font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; display:flex; flex-direction:column; }
+
+  /* Header */
+  header { background:var(--bg2); border-bottom:1px solid var(--border); padding:0 24px; display:flex; align-items:center; justify-content:space-between; height:60px; position:sticky; top:0; z-index:100; }
+  .logo { font-size:16px; font-weight:700; color:#fff; display:flex; align-items:center; gap:10px; }
+  .logo span { color:var(--accent); }
+  .header-right { display:flex; gap:12px; align-items:center; }
+  .action-btn { background:var(--bg3); border:1px solid var(--border); color:var(--muted); padding:6px 14px; border-radius:6px; cursor:pointer; font-size:12px; font-family:inherit; text-decoration:none; transition:all 0.2s; display:inline-flex; align-items:center; gap:6px; }
+  .action-btn:hover { color:var(--text); border-color:var(--accent); }
+
+  /* Layout */
+  main { flex:1; display:grid; grid-template-columns:260px 1fr 300px; gap:0; height:calc(100vh - 60px); overflow:hidden; }
+
+  /* Sidebar — Threads */
+  .sidebar { background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+  .sidebar-header { padding:16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .sidebar-header h3 { font-size:13px; font-weight:600; color:var(--text); }
+  .new-thread-btn { background:var(--accent); color:#fff; border:none; padding:5px 10px; border-radius:5px; font-size:11px; cursor:pointer; font-weight:600; }
+  .thread-list { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:4px; }
+  .thread-item { padding:10px 12px; border-radius:6px; cursor:pointer; font-size:12px; color:var(--muted); border:1px solid transparent; transition:all 0.15s; }
+  .thread-item:hover { background:var(--bg3); color:var(--text); }
+  .thread-item.active { background:rgba(139,92,246,0.15); border-color:rgba(139,92,246,0.4); color:var(--accent2); }
+  .thread-title { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .thread-date { font-size:10px; color:var(--muted); margin-top:2px; }
+
+  /* Chat panel */
+  .chat-panel { display:flex; flex-direction:column; overflow:hidden; }
+  .chat-box { flex:1; padding:20px; overflow-y:auto; display:flex; flex-direction:column; gap:16px; }
+  .msg { max-width:80%; padding:14px 16px; border-radius:10px; font-size:14px; line-height:1.65; animation:fadeIn 0.2s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  .msg.user { background:var(--bg3); border:1px solid var(--border); align-self:flex-end; }
+  .msg.ai { background:rgba(139,92,246,0.08); border:1px solid rgba(139,92,246,0.25); align-self:flex-start; white-space:pre-wrap; }
+  .msg.thinking { opacity:0.6; font-style:italic; align-self:flex-start; background:none; border:none; font-size:13px; color:var(--muted); }
+  .msg-label { font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
+  .msg.user .msg-label { color:var(--muted); }
+  .msg.ai .msg-label { color:var(--accent); }
+  .empty-state { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; color:var(--muted); }
+  .empty-state .icon { font-size:48px; }
+  .empty-state p { font-size:13px; text-align:center; max-width:280px; line-height:1.6; }
+  .suggestions { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:8px; }
+  .suggestion-chip { background:var(--bg3); border:1px solid var(--border); padding:6px 12px; border-radius:20px; font-size:12px; color:var(--muted); cursor:pointer; transition:all 0.15s; }
+  .suggestion-chip:hover { border-color:var(--accent); color:var(--accent2); }
+
+  /* Chat input */
+  .chat-input-area { padding:16px; border-top:1px solid var(--border); background:var(--bg2); }
+  .chat-input-row { display:flex; gap:10px; align-items:flex-end; }
+  .chat-input-row textarea { flex:1; background:var(--bg); border:1px solid var(--border); color:#fff; padding:12px; border-radius:8px; font-family:inherit; font-size:14px; resize:none; min-height:44px; max-height:120px; line-height:1.5; transition:border-color 0.2s; }
+  .chat-input-row textarea:focus { outline:none; border-color:var(--accent); }
+  .send-btn { background:var(--accent); color:#fff; border:none; padding:12px 18px; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px; transition:opacity 0.2s; flex-shrink:0; }
+  .send-btn:disabled { opacity:0.4; cursor:not-allowed; }
+  .input-hint { font-size:11px; color:var(--muted); margin-top:6px; }
+
+  /* Watches panel */
+  .watches-panel { background:var(--bg2); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+  .panel-header { padding:14px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .panel-header h3 { font-size:13px; font-weight:600; color:var(--text); }
+  .panel-badge { background:var(--bg3); color:var(--muted); border:1px solid var(--border); border-radius:10px; padding:1px 8px; font-size:10px; font-weight:600; }
+  .watches-list { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px; }
+  .watch-card { background:var(--bg); border:1px solid var(--border); padding:12px; border-radius:8px; font-size:12px; transition:border-color 0.2s; }
+  .watch-card:hover { border-color:var(--accent); }
+  .watch-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; }
+  .watch-ticker { font-weight:700; color:#fff; font-size:13px; }
+  .badge { padding:2px 7px; border-radius:4px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+  .badge.waiting  { background:rgba(245,158,11,0.15); color:var(--gold); }
+  .badge.triggered{ background:rgba(16,185,129,0.15); color:var(--bull); }
+  .badge.invalidated{background:rgba(239,68,68,0.15); color:var(--bear); }
+  .badge.high     { background:rgba(239,68,68,0.2); color:var(--bear); }
+  .badge.normal   { background:rgba(100,116,139,0.2); color:var(--muted); }
+  .watch-cond { color:var(--muted); margin-bottom:6px; line-height:1.4; }
+  .watch-prog { color:var(--accent2); font-size:11px; }
+  .watch-cancel { margin-top:8px; border-top:1px solid var(--border); padding-top:8px; }
+  .cancel-btn { background:none; border:1px solid var(--border); color:var(--muted); padding:3px 8px; border-radius:4px; cursor:pointer; font-size:10px; font-family:inherit; }
+  .cancel-btn:hover { border-color:var(--bear); color:var(--bear); }
+  .no-watches { padding:20px; text-align:center; color:var(--muted); font-size:12px; line-height:1.6; }
 </style>
 </head>
 <body>
@@ -132,57 +95,224 @@
 <header>
   <div class="logo">🧠 AI Trading <span>Assistant</span></div>
   <div class="header-right">
-    <a href="/" class="action-btn" style="background: var(--bg3); color: var(--muted);">← View Engine Dashboard</a>
+    <a href="/" class="action-btn">← Engine Dashboard</a>
   </div>
 </header>
 
 <main>
-  <!-- Chat Panel -->
-  <div class="panel">
-    <div class="panel-header">Conversation with Analyst</div>
-    <div class="chat-box" id="chat">
-      <div class="msg ai">Hello! I am your AI Trading Assistant. How can I help you analyze the market today?</div>
+  <!-- Thread Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <h3>Conversations</h3>
+      <button class="new-thread-btn" onclick="createThread()">+ New</button>
     </div>
-    <div class="chat-input">
-      <input type="text" id="chat-inp" placeholder="Ask to analyze a setup, or create a watch task...">
-      <button onclick="sendChat()">Send</button>
+    <div class="thread-list" id="thread-list"></div>
+  </div>
+
+  <!-- Chat Panel -->
+  <div class="chat-panel">
+    <div class="chat-box" id="chat-box">
+      <div class="empty-state" id="empty-state">
+        <div class="icon">🧠</div>
+        <p>Select a conversation or start a new one. Ask me to analyze any instrument, explain a recent alert, or watch a setup for you.</p>
+        <div class="suggestions">
+          <div class="suggestion-chip" onclick="fillSuggestion('Analyze Volatility 75')">Analyze Volatility 75</div>
+          <div class="suggestion-chip" onclick="fillSuggestion('Why did I get an alert this morning?')">Why did I get an alert?</div>
+          <div class="suggestion-chip" onclick="fillSuggestion('What are my active watch tasks?')">Active watches</div>
+          <div class="suggestion-chip" onclick="fillSuggestion('Watch Volatility 75 for a bearish continuation BOS')">Create a watch task</div>
+        </div>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <div class="chat-input-row">
+        <textarea id="chat-inp" placeholder="Ask me anything about the market..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendMessage()">Send</button>
+      </div>
+      <div class="input-hint">Press Enter to send · Shift+Enter for new line</div>
     </div>
   </div>
 
   <!-- Watch Tasks Panel -->
-  <div class="panel">
-    <div class="panel-header">Active Watches</div>
-    <div class="watches" id="watches">
-      <!-- Dummy for now until wired -->
-      <div class="watch-card">
-        <div class="w-title">
-          <span>Volatility 75 (15m)</span>
-          <span class="badge waiting">Waiting</span>
-        </div>
-        <div class="w-cond">Wait for 50% retracement of last bearish BOS.</div>
-        <div class="w-prog">Progress: Price has retraced 34%</div>
-      </div>
+  <div class="watches-panel">
+    <div class="panel-header">
+      <h3>Active Watches</h3>
+      <span class="panel-badge" id="watch-count">0</span>
+    </div>
+    <div class="watches-list" id="watches-list">
+      <div class="no-watches">No active watch tasks.<br>Ask the AI to watch a setup for you.</div>
     </div>
   </div>
 </main>
 
 <script>
-  function sendChat() {
+  let currentThreadId = null;
+  let isSending = false;
+
+  // ── Initialization ──
+  async function init() {
+    await loadThreads();
+    await loadWatches();
+    setInterval(loadWatches, 30000);
+  }
+
+  // ── Threads ──
+  async function loadThreads() {
+    const threads = await fetch('/api/chat/threads').then(r => r.json()).catch(() => []);
+    const list = document.getElementById('thread-list');
+    if (threads.length === 0) {
+      list.innerHTML = '<div style="padding:12px;font-size:12px;color:var(--muted);">No conversations yet.</div>';
+      return;
+    }
+    list.innerHTML = threads.map(t => `
+      <div class="thread-item ${t.id === currentThreadId ? 'active' : ''}" onclick="selectThread(${t.id})" id="thread-${t.id}">
+        <div class="thread-title">${escHtml(t.title || 'Conversation')}</div>
+        <div class="thread-date">${relativeTime(t.updated_at)}</div>
+      </div>
+    `).join('');
+  }
+
+  async function createThread() {
+    const t = await fetch('/api/chat/threads', { method:'POST' }).then(r => r.json());
+    await loadThreads();
+    selectThread(t.id);
+  }
+
+  async function selectThread(id) {
+    currentThreadId = id;
+    document.querySelectorAll('.thread-item').forEach(el => el.classList.remove('active'));
+    const el = document.getElementById(`thread-${id}`);
+    if (el) el.classList.add('active');
+
+    const messages = await fetch(`/api/chat/threads/${id}/messages`).then(r => r.json()).catch(() => []);
+    renderMessages(messages);
+  }
+
+  function renderMessages(messages) {
+    const box = document.getElementById('chat-box');
+    const empty = document.getElementById('empty-state');
+    if (empty) empty.remove();
+
+    if (messages.length === 0) {
+      box.innerHTML = '<div class="empty-state"><div class="icon">💬</div><p>Start the conversation below.</p></div>';
+      return;
+    }
+
+    box.innerHTML = messages.map(m => `
+      <div class="msg ${m.role}">
+        <div class="msg-label">${m.role === 'user' ? 'You' : 'AI Analyst'}</div>
+        ${escHtml(m.content)}
+      </div>
+    `).join('');
+    box.scrollTop = box.scrollHeight;
+  }
+
+  // ── Chat ──
+  async function sendMessage() {
+    if (isSending) return;
     const inp = document.getElementById('chat-inp');
     const val = inp.value.trim();
     if (!val) return;
-    
-    const chat = document.getElementById('chat');
-    chat.innerHTML += `<div class="msg user">${val}</div>`;
+
+    if (!currentThreadId) {
+      const t = await fetch('/api/chat/threads', { method:'POST' }).then(r => r.json());
+      currentThreadId = t.id;
+      await loadThreads();
+    }
+
+    isSending = true;
+    const btn = document.getElementById('send-btn');
+    btn.disabled = true;
     inp.value = '';
-    
-    // Simulate thinking
-    setTimeout(() => {
-      chat.innerHTML += `<div class="msg ai">I have received your request. Backend LLM wiring is currently in progress.</div>`;
-      chat.scrollTop = chat.scrollHeight;
-    }, 1000);
-    chat.scrollTop = chat.scrollHeight;
+    inp.style.height = 'auto';
+
+    const box = document.getElementById('chat-box');
+    const empty = box.querySelector('.empty-state');
+    if (empty) empty.remove();
+
+    // Show user message
+    box.innerHTML += `<div class="msg user"><div class="msg-label">You</div>${escHtml(val)}</div>`;
+    box.innerHTML += `<div class="msg thinking" id="thinking-msg">🧠 Thinking...</div>`;
+    box.scrollTop = box.scrollHeight;
+
+    try {
+      const data = await fetch(`/api/chat/threads/${currentThreadId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: val }),
+      }).then(r => r.json());
+
+      const thinking = document.getElementById('thinking-msg');
+      if (thinking) thinking.remove();
+
+      box.innerHTML += `<div class="msg ai"><div class="msg-label">AI Analyst</div>${escHtml(data.reply || data.error || 'No response.')}</div>`;
+      box.scrollTop = box.scrollHeight;
+      loadThreads();
+      loadWatches();
+    } catch (e) {
+      const thinking = document.getElementById('thinking-msg');
+      if (thinking) thinking.textContent = '⚠️ Connection error.';
+    }
+
+    isSending = false;
+    btn.disabled = false;
   }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  }
+  function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
+  function fillSuggestion(text) {
+    document.getElementById('chat-inp').value = text;
+    if (!currentThreadId) createThread().then(() => document.getElementById('chat-inp').focus());
+    else document.getElementById('chat-inp').focus();
+  }
+
+  // ── Watch Tasks ──
+  async function loadWatches() {
+    const tasks = await fetch('/api/watches').then(r => r.json()).catch(() => []);
+    const active = tasks.filter(t => t.status === 'waiting');
+    document.getElementById('watch-count').textContent = active.length;
+
+    const list = document.getElementById('watches-list');
+    if (tasks.length === 0) {
+      list.innerHTML = '<div class="no-watches">No watch tasks yet.<br>Ask the AI to watch a setup for you.</div>';
+      return;
+    }
+
+    list.innerHTML = tasks.slice(0, 20).map(t => `
+      <div class="watch-card">
+        <div class="watch-top">
+          <span class="watch-ticker">${escHtml(t.ticker)} <span style="font-weight:400;color:var(--muted);font-size:11px;">${t.timeframe}</span></span>
+          <div style="display:flex;gap:4px;flex-direction:column;align-items:flex-end;">
+            <span class="badge ${t.status}">${t.status}</span>
+            <span class="badge ${t.priority}">${t.priority}</span>
+          </div>
+        </div>
+        <div class="watch-cond">"${escHtml(t.condition)}"</div>
+        ${t.progress_msg ? `<div class="watch-prog">${escHtml(t.progress_msg)}</div>` : ''}
+        ${t.status === 'waiting' ? `<div class="watch-cancel"><button class="cancel-btn" onclick="cancelWatch(${t.id})">Cancel</button></div>` : ''}
+      </div>
+    `).join('');
+  }
+
+  async function cancelWatch(id) {
+    await fetch(`/api/watches/${id}/cancel`, { method: 'PATCH' });
+    loadWatches();
+  }
+
+  // ── Utils ──
+  function escHtml(str) {
+    return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function relativeTime(ts) {
+    const diff = Date.now() - ts;
+    if (diff < 60000) return 'Just now';
+    if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
+    if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
+    return new Date(ts).toLocaleDateString();
+  }
+
+  init();
 </script>
 </body>
 </html>
