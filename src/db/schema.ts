@@ -71,6 +71,41 @@ CREATE TABLE IF NOT EXISTS notification_config (
 );
 
 INSERT OR IGNORE INTO notification_config (id) VALUES (1);
+
+-- ── V3 Additions: AI Assistant & Watch Tasks ──
+
+CREATE TABLE IF NOT EXISTS chat_threads (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    title       TEXT,
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id   INTEGER NOT NULL REFERENCES chat_threads(id),
+    role        TEXT NOT NULL,
+    content     TEXT NOT NULL,
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+);
+
+CREATE TABLE IF NOT EXISTS watch_tasks (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol_id     INTEGER NOT NULL REFERENCES symbols(id),
+    timeframe     TEXT NOT NULL DEFAULT '15m',
+    condition     TEXT NOT NULL,
+    priority      TEXT NOT NULL DEFAULT 'normal', -- 'high', 'normal', 'low'
+    status        TEXT NOT NULL DEFAULT 'waiting', -- 'waiting', 'triggered', 'invalidated', 'cancelled'
+    progress_msg  TEXT,
+    confidence    TEXT,
+    created_by    TEXT NOT NULL DEFAULT 'AI Conversation',
+    created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+    updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+    expires_at    INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_watch_tasks_status ON watch_tasks(status);
+CREATE INDEX IF NOT EXISTS idx_watch_tasks_symbol ON watch_tasks(symbol_id);
 `;
 
 const DEFAULT_SYMBOLS: { ticker: string; label: string }[] = [
