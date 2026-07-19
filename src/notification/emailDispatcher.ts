@@ -6,7 +6,8 @@ import { formatTimestamp } from '../utils/timeUtils';
 
 const resend = new Resend(config.resendApiKey);
 
-function buildEmailHtml(alerts: AlertWithDetails[], aiSummary: string): string {
+// ── SYSTEM 1: Engine Alert Email ──
+function buildEngineEmailHtml(alerts: AlertWithDetails[], aiSummary: string): string {
   const cards = alerts.map(a => `
     <div style="background:#111827;border:1px solid #1e2d45;border-radius:8px;padding:20px;margin-bottom:15px;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
       
@@ -43,8 +44,11 @@ function buildEmailHtml(alerts: AlertWithDetails[], aiSummary: string): string {
   return `
     <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:600px;margin:auto;background:#0a0e1a;padding:20px;border-radius:12px;">
       
-      <div style="margin-bottom:20px;">
-        <h2 style="color:#fff;margin:0 0 5px 0;">🔔 Confirmed Market Structure</h2>
+      <div style="margin-bottom:20px; border-bottom: 2px solid #1e2d45; padding-bottom: 15px;">
+        <div style="font-size:11px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:#94a3b8;margin-bottom:8px;">
+          Source: Market Structure Engine
+        </div>
+        <h2 style="color:#fff;margin:0 0 5px 0;">🔔 Objective System Event</h2>
         <p style="color:#94a3b8;font-size:14px;margin:0;">15-Minute Timeframe · ${alerts.length} event${alerts.length > 1 ? 's' : ''}</p>
       </div>
 
@@ -71,8 +75,15 @@ function buildEmailHtml(alerts: AlertWithDetails[], aiSummary: string): string {
 
 export async function sendBatchEmail(alerts: AlertWithDetails[], aiSummary: string): Promise<{ success: boolean; resendId?: string }> {
   try {
-    const html = buildEmailHtml(alerts, aiSummary);
-    const subject = `🔔 Market Structure Update — ${alerts.length} event${alerts.length > 1 ? 's' : ''} — ${formatTimestamp(Date.now()).substring(0, 16)} UTC`;
+    const html = buildEngineEmailHtml(alerts, aiSummary);
+    
+    // Engine Email Subject
+    let subject = `Engine Alert: ${alerts.length} event${alerts.length > 1 ? 's' : ''} Detected`;
+    if (alerts.length === 1) {
+      const a = alerts[0];
+      const dirStr = a.direction === 'BULLISH' ? 'Bullish' : 'Bearish';
+      subject = `Engine Alert: ${dirStr} ${a.event_type} Detected on ${a.ticker}`;
+    }
 
     const result = await resend.emails.send({
       from: config.emailFrom,
@@ -90,6 +101,73 @@ export async function sendBatchEmail(alerts: AlertWithDetails[], aiSummary: stri
     return { success: true, resendId: result.data?.id as string };
   } catch (err: any) {
     console.error('Email dispatch error:', err.message);
+    return { success: false };
+  }
+}
+
+// ── SYSTEM 2: AI Watch Email ──
+export interface WatchTaskContext {
+  ticker: string;
+  condition: string;
+  status: string;
+  reason: string;
+}
+
+export async function sendWatchEmail(task: WatchTaskContext): Promise<{ success: boolean; resendId?: string }> {
+  try {
+    const subject = `AI Watch Triggered: ${task.ticker} — Condition Met`;
+    
+    const html = `
+      <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:600px;margin:auto;background:#0a0e1a;padding:20px;border-radius:12px;">
+        
+        <div style="margin-bottom:20px; border-bottom: 2px solid #8b5cf6; padding-bottom: 15px;">
+          <div style="font-size:11px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:#8b5cf6;margin-bottom:8px;">
+            Source: AI Trading Assistant
+          </div>
+          <h2 style="color:#fff;margin:0 0 5px 0;">🧠 Personal Watch Triggered</h2>
+        </div>
+
+        <div style="background:#111827;border:1px solid #1e2d45;border-radius:8px;padding:20px;margin-bottom:15px;color:#e2e8f0;">
+          <div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:15px;">${task.ticker}</div>
+          
+          <div style="margin-bottom:15px;">
+            <div style="font-size:12px;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;">Your Condition</div>
+            <div style="font-size:15px;color:#fff;font-weight:500;">"${task.condition}"</div>
+          </div>
+
+          <div style="margin-bottom:15px;">
+            <div style="font-size:12px;color:#94a3b8;margin-bottom:4px;text-transform:uppercase;">AI Analysis</div>
+            <div style="font-size:15px;color:#10b981;font-weight:500;">${task.reason}</div>
+          </div>
+
+          <div style="margin-top:20px;text-align:center;">
+            <a href="${getTradingViewUrl(task.ticker)}" style="display:inline-block;background:#8b5cf6;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-weight:bold;font-size:13px;">Open Chart on TradingView →</a>
+          </div>
+        </div>
+
+        <p style="font-size:12px;color:#999;text-align:center;margin-top:25px">
+          AI Trend Assistant | ${formatTimestamp(Date.now())} UTC<br>
+          <a href="${config.dashboardUrl}/ai" style="color:#8b5cf6">Open AI Dashboard</a>
+        </p>
+      </div>
+    `;
+
+    const result = await resend.emails.send({
+      from: config.emailFrom,
+      to: config.notificationEmail,
+      subject,
+      html,
+    });
+
+    if (result.error) {
+      console.error('Watch Email Resend API error:', result.error);
+      return { success: false };
+    }
+
+    console.log(`Watch Email sent for ${task.ticker} — Resend ID: ${result.data?.id}`);
+    return { success: true, resendId: result.data?.id as string };
+  } catch (err: any) {
+    console.error('Watch Email dispatch error:', err.message);
     return { success: false };
   }
 }
