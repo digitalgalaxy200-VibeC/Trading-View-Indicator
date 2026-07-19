@@ -114,6 +114,63 @@ CREATE TABLE IF NOT EXISTS trading_profile (
 );
 
 INSERT OR IGNORE INTO trading_profile (id, content) VALUES (1, 'I use Smart Money Concepts on a 15-minute timeframe. I look for continuation BOS setups after a retracement.');
+
+-- V4: Opportunity Engine
+
+CREATE TABLE IF NOT EXISTS opportunities (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol_id       INTEGER NOT NULL REFERENCES symbols(id),
+    direction       TEXT NOT NULL,
+    workflow_type   TEXT NOT NULL CHECK (workflow_type IN ('reversal','continuation')),
+    watch_level     INTEGER NOT NULL DEFAULT 1 CHECK (watch_level IN (1,2,3)),
+    status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','notified','expired')),
+    choch_event_id  INTEGER REFERENCES events(id),
+    bos_event_id    INTEGER REFERENCES events(id),
+    impulse_high    REAL,
+    impulse_low     REAL,
+    fib_0           REAL,
+    fib_50          REAL,
+    fib_100         REAL,
+    entry_price     REAL,
+    stop_loss       REAL,
+    take_profit     REAL,
+    risk_reward     REAL,
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+    updated_at      INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+    notified_at     INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_opps_watch_level ON opportunities(watch_level, status);
+CREATE INDEX IF NOT EXISTS idx_opps_symbol      ON opportunities(symbol_id);
+=======
+-- ── V4: Opportunity Engine ──
+
+CREATE TABLE IF NOT EXISTS opportunities (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    symbol_id       INTEGER NOT NULL REFERENCES symbols(id),
+    direction       TEXT NOT NULL,
+    workflow_type   TEXT NOT NULL CHECK (workflow_type IN ('reversal','continuation')),
+    watch_level     INTEGER NOT NULL DEFAULT 1 CHECK (watch_level IN (1,2,3)),
+    status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','notified','expired')),
+    choch_event_id  INTEGER REFERENCES events(id),
+    bos_event_id    INTEGER REFERENCES events(id),
+    impulse_high    REAL,
+    impulse_low     REAL,
+    fib_0           REAL,
+    fib_50          REAL,
+    fib_100         REAL,
+    entry_price     REAL,
+    stop_loss       REAL,
+    take_profit     REAL,
+    risk_reward     REAL,
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+    updated_at      INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
+    notified_at     INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_opps_watch_level ON opportunities(watch_level, status);
+CREATE INDEX IF NOT EXISTS idx_opps_symbol      ON opportunities(symbol_id);
+>>>>>>> a087f34 (Add V4 Opportunity Engine with 3-level watch pipeline)
 `;
 
 const DEFAULT_SYMBOLS: { ticker: string; label: string }[] = [

@@ -503,6 +503,17 @@
     </div>
   </div>
 
+  <!-- Opportunities (V4) -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">🎯 Opportunities</div>
+      <div class="section-badge" id="opp-ct">—</div>
+    </div>
+    <div id="opp-section" style="display:flex;flex-wrap:wrap;gap:15px;">
+      <div style="padding:20px;color:var(--muted);text-align:center;">Loading...</div>
+    </div>
+  </div>
+
   <!-- Alert History -->
   <div class="section">
     <div class="section-header">
@@ -795,6 +806,28 @@ async function loadState() {
   } catch(e) { console.error(e); }
 }
 
+// V4: Load opportunities
+async function loadOpportunities() {
+  try {
+    const res = await fetch(API + '/opportunities');
+    const data = await res.json();
+    document.getElementById('opp-ct').textContent = data.length + ' active';
+    if (!data.length) {
+      document.getElementById('opp-section').innerHTML = '<div style="padding:20px;color:var(--muted);text-align:center;">No active opportunities</div>';
+      return;
+    }
+    const levelColors = ['#64748b','#3b82f6','#10b981'];
+    const levelLabels = ['L1 — Watching','L2 — Retracing','L3 — READY'];
+    document.getElementById('opp-section').innerHTML = data.map(o => (`
+      <div style="background:var(--bg2);border:1px solid ${levelColors[o.watch_level-1]};border-radius:8px;padding:15px;min-width:220px;">
+        <div style="font-size:13px;font-weight:700;color:#fff;margin-bottom:6px;">${o.ticker}</div>
+        <div style="font-size:12px;color:${o.direction==='BULLISH'?'var(--bull)':'var(--bear)'}">${o.direction} ${o.workflow_type}</div>
+        <div style="font-size:11px;background:${levelColors[o.watch_level-1]};color:#fff;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:8px;">${levelLabels[o.watch_level-1]}</div>
+        ${o.watch_level>=2 ? `<div style="font-size:11px;color:var(--muted);margin-top:6px;">Entry: ${o.entry_price?.toFixed(2)||'—'} | R:R ${o.risk_reward||'—'}</div>` : ''}
+      </div>`)).join('');
+  } catch(e) { console.error(e); }
+}
+
 async function fetchAlerts(filter) {
   currentFilter = filter || currentFilter;
   try {
@@ -906,7 +939,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 });
 
 async function loadAll() {
-  await Promise.all([loadStats(), loadState(), fetchAlerts(), fetchEmails()]);
+  await Promise.all([loadStats(), loadState(), loadOpportunities(), fetchAlerts(), fetchEmails()]);
   document.getElementById('last-updated').textContent = 'Updated ' + new Date().toISOString().substring(11,19) + ' UTC';
   initLatestTimestamp();
 }

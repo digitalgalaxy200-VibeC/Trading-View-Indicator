@@ -75,4 +75,59 @@ export class DeepSeekClient {
     const content = data.choices?.[0]?.message?.content?.trim();
     return content || '⚠️ AI returned no content.';
   }
+
+  static async scoreOpportunity(opp: any): Promise<string> {
+    const typeLabel = opp.workflow_type === 'reversal' ? 'Trend Reversal' : 'Trend Continuation';
+    const entry = opp.entry_price?.toFixed(2) || 'N/A';
+    const sl = opp.stop_loss?.toFixed(2) || 'N/A';
+    const tp = opp.take_profit?.toFixed(2) || 'N/A';
+    const rr = opp.risk_reward || 'N/A';
+
+    const userPrompt = [
+      `Score this trading opportunity on the 15-minute timeframe:`,
+      `Direction: ${opp.direction}`,
+      `Type: ${typeLabel}`,
+      `Entry (50% Fib): ${entry}`,
+      `Stop Loss (0% Fib): ${sl}`,
+      `Take Profit (100% Fib): ${tp}`,
+      `Risk-to-Reward: 1:${rr}`,
+      '',
+      `Provide a score breakdown using this exact table format:`,
+      `| Factor | Score |`,
+      `|--------|-------|`,
+      `| External Structure | X/20 |`,
+      `| CHOCH / Trend Valid | X/15 |`,
+      `| BOS Confirmation | X/20 |`,
+      `| Fibonacci Retracement | X/25 |`,
+      `| Market Quality | X/10 |`,
+      `| Timeframe Integrity | X/10 |`,
+      `| **Total** | **X/100** |`,
+      '',
+      `After the table, explain any deductions in 1-2 sentences.`,
+      `End with: "The final trading decision belongs entirely to the user."`,
+    ].join('\n');
+
+    const body = {
+      model: config.deepseekModel,
+      temperature: 0.2,
+      max_tokens: 500,
+      messages: [
+        { role: 'system', content: 'You are a professional SMC trade analyst. Score opportunities objectively. NEVER recommend buying or selling.' },
+        { role: 'user', content: userPrompt },
+      ],
+    };
+
+    try {
+      const response = await fetch(DEEPSEEK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${config.deepseekApiKey}` },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) return 'Score unavailable.';
+      const data = await response.json() as any;
+      return data.choices?.[0]?.message?.content?.trim() || 'Score unavailable.';
+    } catch {
+      return 'Score unavailable.';
+    }
+  }
 }

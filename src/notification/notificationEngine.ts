@@ -1,7 +1,7 @@
 import { AlertQueue } from './alertQueue';
 import { shouldSendBatch } from './batchDecider';
 import { DeepSeekClient } from '../api/deepseekClient';
-import { sendBatchEmail } from './emailDispatcher';
+import { sendBatchEmail, sendOpportunityEmail } from './emailDispatcher';
 import { emailRepository } from '../db/emailRepository';
 import { configRepository } from '../db/configRepository';
 import { config } from '../config/env';
@@ -16,19 +16,24 @@ export class NotificationEngine {
 
   start(): void {
     console.log(`NotificationEngine started — checking every ${config.notificationCheckSeconds}s`);
-    this.tick(); // run immediately on start
+    this.tick();
     this.timer = setInterval(() => this.tick(), config.notificationCheckSeconds * 1000);
   }
 
   stop(): void {
-    if (this.timer) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
+    if (this.timer) { clearInterval(this.timer); this.timer = null; }
   }
 
   private async tick(): Promise<void> {
     try {
+      // ── V4: L3 Opportunities take priority — send immediately ──
+      const l3Opps = this.queue.getPendingOpportunities();
+      if (l3Opps.length > 0) {
+        await this.sendL3Opportunities(l3Opps);
+        this.queue.clearOpportunities();
+      }
+
+      // ── Regular event alerts (batched) ──
       const notifConfig = configRepository.get();
       const pending = this.queue.getPending();
       const pendingCount = pending.length;
@@ -36,45 +41,52 @@ export class NotificationEngine {
       const lastSent = emailRepository.getLastSentTime();
       const timeSinceLast = lastSent ? Date.now() - lastSent : null;
 
-      const shouldSend = shouldSendBatch(pendingCount, oldestAge, timeSinceLast, notifConfig);
-
-      if (!shouldSend) {
-        if (pendingCount > 0) {
-          console.log(`NotificationEngine: ${pendingCount} pending, waiting... (oldest: ${oldestAge ? Math.round(oldestAge / 1000) + 's' : 'N/A'})`);
-        }
+      if (!shouldSendBatch(pendingCount, oldestAge, timeSinceLast, notifConfig)) {
         return;
       }
 
-      console.log(`\n📧 NotificationEngine: Sending batch of ${pendingCount} alerts...`);
-
-      // Generate AI summary
+      console.log(`\n📧 Sending batch of ${pendingCount} alerts...`);
       let aiSummary: string;
       try {
         aiSummary = await DeepSeekClient.summarizeBatch(pending);
-        console.log(`  AI summary: ${aiSummary.length} chars`);
       } catch (err: any) {
-        console.error('  AI summary failed:', err.message);
-        aiSummary = '⚠️ AI summary unavailable — please review charts manually.';
+        aiSummary = '⚠️ AI summary unavailable.';
       }
 
-      // Send email
       const result = await sendBatchEmail(pending, aiSummary);
-
-      // Record in database
-      const emailRow = emailRepository.insert(
-        pendingCount,
-        aiSummary,
-        result.resendId || null,
-        result.success ? 'sent' : 'failed'
-      );
-
-      // Mark alerts as sent
+      const emailRow = emailRepository.insert(pendingCount, aiSummary, result.resendId || null, result.success ? 'sent' : 'failed');
       const alertIds = pending.map(a => a.id);
       this.queue.markSent(alertIds, emailRow.id);
-
-      console.log(`  ✅ Batch complete: ${pendingCount} alerts → email #${emailRow.id}\n`);
+      console.log(`  ✅ ${pendingCount} alerts → email #${emailRow.id}\n`);
     } catch (err: any) {
-      console.error('NotificationEngine tick error:', err.message);
+      console.error('NotificationEngine error:', err.message);
+    }
+  }
+
+  private async sendL3Opportunities(opps: any[]): Promise<void> {
+    console.log(`\n🎯 Sending ${opps.length} L3 opportunity notification(s)...`);
+
+    for (const opp of opps) {
+      try {
+        // Get AI score
+        let scoreText = '';
+        try {
+          scoreText = await DeepSeekClient.scoreOpportunity(opp);
+        } catch {
+          scoreText = 'Score unavailable.';
+        }
+
+        const result = await sendOpportunityEmail(opp, scoreText);
+        if (result.success) {
+          const { opportunityRepository } = await import('../db/opportunityRepository');
+          opportunityRepository.update(opp.id, { status: 'notified', notified_at: Date.now() });
+        }
+
+        const emailRow = emailRepository.insert(1, scoreText, result.resendId || null, result.success ? 'sent' : 'failed');
+        console.log(`  ✅ L3 ${opp.direction} ${opp.workflow_type} → email #${emailRow.id}`);
+      } catch (err: any) {
+        console.error(`  ❌ L3 email failed: ${err.message}`);
+      }
     }
   }
 }

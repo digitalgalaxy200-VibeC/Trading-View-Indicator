@@ -114,3 +114,43 @@ export interface StatsResponse {
   emailsSent: number;
   pendingAlerts: number;
 }
+
+// ── V4: Opportunity Engine ──
+
+export interface OpportunityRow {
+  id: number;
+  symbol_id: number;
+  direction: string;
+  workflow_type: 'reversal' | 'continuation';
+  watch_level: number;
+  status: 'active' | 'notified' | 'expired';
+  choch_event_id: number | null;
+  bos_event_id: number | null;
+  impulse_high: number | null;
+  impulse_low: number | null;
+  fib_0: number | null;
+  fib_50: number | null;
+  fib_100: number | null;
+  entry_price: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  risk_reward: number | null;
+  created_at: number;
+  updated_at: number;
+  notified_at: number | null;
+}
+
+export interface OpportunityWithTicker extends OpportunityRow {
+  ticker: string;
+}
+
+export interface OpportunityScore {
+  externalStructure: number;   // 0-20
+  chochValid: number;          // 0-15
+  bosConfirmation: number;     // 0-20
+  fibRetracement: number;      // 0-25
+  marketQuality: number;       // 0-10
+  timeframeIntegrity: number;  // 0-10
+  total: number;               // 0-100
+  deductions: string[];
+}

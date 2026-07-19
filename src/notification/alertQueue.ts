@@ -1,14 +1,29 @@
 import { alertRepository } from '../db/alertRepository';
-import { AlertWithDetails } from '../types';
+import { AlertWithDetails, OpportunityRow } from '../types';
+
+// In-memory queue for L3 opportunities (not persisted to alerts table)
+const pendingOpportunities: OpportunityRow[] = [];
 
 export class AlertQueue {
   enqueue(eventId: number): void {
-    // Skip if a pending alert already exists for this event
     if (alertRepository.isDuplicate(eventId)) {
       console.log(`  AlertQueue: duplicate suppressed for event ${eventId}`);
       return;
     }
     alertRepository.insert(eventId);
+  }
+
+  enqueueOpportunity(opp: OpportunityRow): void {
+    pendingOpportunities.push(opp);
+    console.log(`  AlertQueue: L3 opportunity queued (${pendingOpportunities.length} pending)`);
+  }
+
+  getPendingOpportunities(): OpportunityRow[] {
+    return [...pendingOpportunities];
+  }
+
+  clearOpportunities(): void {
+    pendingOpportunities.length = 0;
   }
 
   getPending(): AlertWithDetails[] {
@@ -20,7 +35,7 @@ export class AlertQueue {
   }
 
   count(): number {
-    return alertRepository.count();
+    return alertRepository.count() + pendingOpportunities.length;
   }
 
   oldestPendingAge(): number | null {

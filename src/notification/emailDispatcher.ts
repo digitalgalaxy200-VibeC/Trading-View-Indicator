@@ -171,3 +171,20 @@ export async function sendWatchEmail(task: WatchTaskContext): Promise<{ success:
     return { success: false };
   }
 }
+
+// V4: Opportunity Email
+export async function sendOpportunityEmail(opp: any, scoreText: string): Promise<{ success: boolean; resendId?: string }> {
+  try {
+    const dirEmoji = opp.direction === 'BULLISH' ? '🟢' : '🔴';
+    const typeLabel = opp.workflow_type === 'reversal' ? 'Trend Reversal' : 'Trend Continuation';
+    const entry = opp.entry_price?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '—';
+    const sl = opp.stop_loss?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '—';
+    const tp = opp.take_profit?.toLocaleString('en-US', { minimumFractionDigits: 2 }) || '—';
+    const rr = opp.risk_reward || '—';
+    const subject = `${dirEmoji} Trade Ready: ${opp.direction} ${typeLabel}`;
+    const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:600px;margin:auto;background:#0a0e1a;padding:20px;border-radius:12px;"><h2 style="color:#fff">${dirEmoji} ${opp.direction} ${typeLabel}</h2><table style="width:100%;color:#e2e8f0;"><tr><td>Entry (50% Fib)</td><td style="text-align:right;font-weight:bold">${entry}</td></tr><tr><td>Stop Loss (0%)</td><td style="text-align:right;color:#ef4444;font-weight:bold">${sl}</td></tr><tr><td>Take Profit (100%)</td><td style="text-align:right;color:#10b981;font-weight:bold">${tp}</td></tr><tr><td>Risk-to-Reward</td><td style="text-align:right;font-weight:bold">1:${rr}</td></tr></table><div style="background:#111827;padding:15px;margin-top:15px;border-radius:8px;white-space:pre-wrap;line-height:1.7">${scoreText}</div><div style="text-align:center;margin-top:20px"><a href="${getTradingViewUrl(opp.ticker || '')}" style="display:inline-block;background:#3b82f6;color:#fff;text-decoration:none;padding:10px 20px;border-radius:6px;font-weight:bold">Open Chart →</a></div><p style="font-size:12px;color:#999;text-align:center;margin-top:25px">AI Trend Assistant | ${formatTimestamp(Date.now())} UTC<br>For review only</p></div>`;
+    const result = await resend.emails.send({ from: config.emailFrom, to: config.notificationEmail, subject, html });
+    if (result.error) { console.error('Opportunity Email error:', result.error); return { success: false }; }
+    return { success: true, resendId: result.data?.id as string };
+  } catch (err: any) { console.error('Opportunity Email error:', err.message); return { success: false }; }
+}
