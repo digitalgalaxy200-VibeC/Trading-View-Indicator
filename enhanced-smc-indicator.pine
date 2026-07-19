@@ -100,7 +100,7 @@ showSwingBearInput              = input.string( ALL,        'Bearish Structure',
 swingBearColorInput             = input(        RED,        '',                         group = SWING_GROUP,    inline = 'bear')
 swingStructureSize              = input.string( SMALL,      'Swing Label Size',         group = SWING_GROUP,    options = [TINY,SMALL,NORMAL])
 showSwingsInput                 = input(        false,      'Show Swings Points',       group = SWING_GROUP,    tooltip = showSwingsTooltip,inline = 'swings')
-swingsLengthInput               = input.int(    50,         '',                         group = SWING_GROUP,    minval = 10,                inline = 'swings')
+swingsLengthInput               = input.int(    20,         '',                         group = SWING_GROUP,    minval = 5,                 inline = 'swings')
 showHighLowSwingsInput          = input(        true,       'Show Strong/Weak High/Low',group = SWING_GROUP,    tooltip = showHighLowSwingsTooltip)
 
 showInternalOrderBlocksInput    = input(        true,       'Internal Order Blocks' ,   group = BLOCKS_GROUP,   tooltip = showInternalOrderBlocksTooltip,   inline = 'iob')
@@ -860,51 +860,32 @@ drawMacroLine(int pTime, float pLevel, string tag, color structureColor, string 
 
 // @function processMacroState
 // Runs the 5-phase External Structure pipeline using Higher-Timeframe OHLC data.
-// htfH/htfL/htfC/htfT come from request.security() for the selected structure timeframe.
-processMacroState(MacroState s, float htfH, float htfL, float htfC, int htfT) =>
-    // ── PHASE 1: Fast 5-bar Pivot Detection on HTF data ──────────────────────
-    // We maintain small rolling arrays inside the UDT via simple bar tracking.
-    // pivotLen bars of look-forward are approximated using the HTF bar-change signal.
-    // On every NEW HTF bar: the PREVIOUS bar's high/low is a confirmed 5-bar pivot candidate.
-    var float prevHtfH   = na
-    var float prevHtfL   = na
-    var int   prevHtfT   = na
-    var float prev2HtfH  = na
-    var float prev2HtfL  = na
+processMacroState(MacroState s, float htfPivotHigh, float htfPivotLow, float htfC) =>
+    // ── PHASE 1 & 2: Swing Classification → External Structure Update ─────────
+    // Phase 1 (Raw Pivot Detection) is handled natively by ta.pivothigh/low in the HTF context.
+    // When a value is returned, it means a pivot of `swingsLengthInput` size has just been confirmed.
+    
+    if not na(htfPivotHigh)
+        pivH = htfPivotHigh
+        if s.trend == BULLISH
+            if na(s.anchorHigh) or pivH > s.anchorHigh
+                s.anchorHigh     := pivH
+                s.anchorHighTime := time // Approx time of confirmation
+        else
+            if na(s.anchorHigh) or pivH < s.anchorHigh
+                s.anchorHigh     := pivH
+                s.anchorHighTime := time
 
-    isNewHtfBar = not na(htfT) and htfT != prevHtfT
-
-    if isNewHtfBar
-        // Confirm prev-prev bar as a pivot using the prev bar as the right side
-        if not na(prev2HtfH) and not na(prevHtfH)
-            // ── PHASE 2 & 3: Swing Classification → External Structure Update ──
-            if prev2HtfH > prevHtfH  // prev2 bar is a local swing high candidate
-                pivH = prev2HtfH
-                if s.trend == BULLISH
-                    if na(s.anchorHigh) or pivH > s.anchorHigh
-                        s.anchorHigh     := pivH
-                        s.anchorHighTime := prevHtfT
-                else
-                    if na(s.anchorHigh) or pivH < s.anchorHigh
-                        s.anchorHigh     := pivH
-                        s.anchorHighTime := prevHtfT
-
-            if prev2HtfL < prevHtfL  // prev2 bar is a local swing low candidate
-                pivL = prev2HtfL
-                if s.trend == BULLISH
-                    if na(s.anchorLow) or pivL > s.anchorLow
-                        s.anchorLow     := pivL
-                        s.anchorLowTime := prevHtfT
-                else
-                    if na(s.anchorLow) or pivL < s.anchorLow
-                        s.anchorLow     := pivL
-                        s.anchorLowTime := prevHtfT
-
-        prev2HtfH := prevHtfH
-        prev2HtfL := prevHtfL
-        prevHtfH  := htfH
-        prevHtfL  := htfL
-        prevHtfT  := htfT
+    if not na(htfPivotLow)
+        pivL = htfPivotLow
+        if s.trend == BULLISH
+            if na(s.anchorLow) or pivL > s.anchorLow
+                s.anchorLow     := pivL
+                s.anchorLowTime := time
+        else
+            if na(s.anchorLow) or pivL < s.anchorLow
+                s.anchorLow     := pivL
+                s.anchorLowTime := time
 
     // ── PHASE 4 & 5: BOS / CHOCH Detection against confirmed external anchors ─
     bullishBOS   = s.trend == BULLISH and not na(s.anchorHigh) and htfC > s.anchorHigh
@@ -989,18 +970,18 @@ if showFairValueGapsInput
     deleteFairValueGaps()
 
 // MACRO STATE MACHINE — External Structure Model (Higher Timeframe)
-// Fetch OHLC from the selected structure timeframe (default: 15-minute)
-// barmerge.lookahead_off ensures no future-bar data is used
-[htfHigh, htfLow, htfClose, htfBarTime] = request.security(
+// Fetch OHLC and Pivots from the selected structure timeframe
+// ta.pivothigh/low computes a full N-candle fractal swing exactly matching the engine logic
+[htfPivotHigh, htfPivotLow, htfClose] = request.security(
      syminfo.tickerid,
      structureTimeframeInput,
-     [high, low, close, time],
+     [ta.pivothigh(high, swingsLengthInput, swingsLengthInput), ta.pivotlow(low, swingsLengthInput, swingsLengthInput), close],
      lookahead = barmerge.lookahead_off)
 
 var MacroState mState = MacroState.new(BEARISH, na, na, na, na, na, na)
 
 getCurrentStructure(swingsLengthInput,false) // keeps swingHigh/swingLow initialized
-processMacroState(mState, htfHigh, htfLow, htfClose, htfBarTime)
+processMacroState(mState, htfPivotHigh, htfPivotLow, htfClose)
 
 if showEqualHighsLowsInput
     getCurrentStructure(equalHighsLowsLengthInput,true)
