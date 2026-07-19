@@ -17,6 +17,10 @@ export function createApp(): express.Application {
     res.sendFile(path.join(__dirname, '..', '..', 'public', 'index.html'));
   });
 
+  app.get('/ai', (_req: Request, res: Response) => {
+    res.sendFile(path.join(__dirname, '..', '..', 'public', 'ai.html'));
+  });
+
   return app;
 }
 
