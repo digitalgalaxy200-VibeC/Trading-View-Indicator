@@ -106,6 +106,14 @@ CREATE TABLE IF NOT EXISTS watch_tasks (
 
 CREATE INDEX IF NOT EXISTS idx_watch_tasks_status ON watch_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_watch_tasks_symbol ON watch_tasks(symbol_id);
+
+CREATE TABLE IF NOT EXISTS trading_profile (
+    id          INTEGER PRIMARY KEY CHECK (id = 1),
+    content     TEXT NOT NULL,
+    updated_at  INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+);
+
+INSERT OR IGNORE INTO trading_profile (id, content) VALUES (1, 'I use Smart Money Concepts on a 15-minute timeframe. I look for continuation BOS setups after a retracement.');
 `;
 
 const DEFAULT_SYMBOLS: { ticker: string; label: string }[] = [

@@ -12,6 +12,7 @@ import { marketStateRepository } from '../db/marketStateRepository';
 import { eventRepository } from '../db/eventRepository';
 import { watchTaskRepository } from '../db/watchTaskRepository';
 import { symbolRepository } from '../db/symbolRepository';
+import { profileRepository } from '../db/profileRepository';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 
@@ -135,8 +136,18 @@ export class AiAssistantService {
    * history: the conversation so far (excluding system prompt)
    */
   static async chat(userMessage: string, history: ChatMessage[] = []): Promise<string> {
+    const tradingProfile = profileRepository.get();
+
+    let dynamicSystemPrompt = `${SYSTEM_PROMPT}\n\nUSER'S TRADING PROFILE (Apply these rules to all analysis):\n${tradingProfile}`;
+    if (history.length === 0) {
+      dynamicSystemPrompt += `\n\nCRITICAL INSTRUCTION: Since this is a new conversation, begin your response exactly with: "Trading Profile loaded successfully. I'll analyze the market using your saved methodology."`;
+    }
+
     const messages: any[] = [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { 
+        role: 'system', 
+        content: dynamicSystemPrompt 
+      },
       ...history,
       { role: 'user', content: userMessage },
     ];

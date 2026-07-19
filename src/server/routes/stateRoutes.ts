@@ -6,6 +6,7 @@ import { emailRepository } from '../../db/emailRepository';
 import { configRepository } from '../../db/configRepository';
 import { watchTaskRepository } from '../../db/watchTaskRepository';
 import { symbolRepository } from '../../db/symbolRepository';
+import { profileRepository } from '../../db/profileRepository';
 
 export const stateRoutes = Router();
 
@@ -139,6 +140,28 @@ stateRoutes.patch('/watches/:id/cancel', (req: Request, res: Response) => {
   try {
     const id = parseInt(req.params.id as string, 10);
     watchTaskRepository.updateStatus(id, 'cancelled', 'Cancelled by user.');
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Profile ──
+
+stateRoutes.get('/profile', (_req: Request, res: Response) => {
+  try {
+    const content = profileRepository.get();
+    res.json({ content });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+stateRoutes.post('/profile', (req: Request, res: Response) => {
+  try {
+    const { content } = req.body;
+    if (typeof content !== 'string') return res.status(400).json({ error: 'content is required' });
+    profileRepository.update(content);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
