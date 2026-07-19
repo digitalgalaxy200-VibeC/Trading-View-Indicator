@@ -32,7 +32,7 @@ chatRoutes.post('/threads', (_req: Request, res: Response) => {
 
 chatRoutes.get('/threads/:id/messages', (req: Request, res: Response) => {
   try {
-    const threadId = parseInt(req.params.id, 10);
+    const threadId = parseInt(req.params.id as string, 10);
     const messages = db.prepare(
       'SELECT * FROM chat_messages WHERE thread_id = ? ORDER BY created_at ASC LIMIT 50'
     ).all(threadId);
@@ -46,7 +46,7 @@ chatRoutes.get('/threads/:id/messages', (req: Request, res: Response) => {
 
 chatRoutes.post('/threads/:id/messages', async (req: Request, res: Response) => {
   try {
-    const threadId = parseInt(req.params.id, 10);
+    const threadId = parseInt(req.params.id as string, 10);
     const { content } = req.body;
     if (!content?.trim()) return res.status(400).json({ error: 'content is required' });
 

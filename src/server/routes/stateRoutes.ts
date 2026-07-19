@@ -137,7 +137,7 @@ stateRoutes.post('/watches', (req: Request, res: Response) => {
 
 stateRoutes.patch('/watches/:id/cancel', (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(req.params.id as string, 10);
     watchTaskRepository.updateStatus(id, 'cancelled', 'Cancelled by user.');
     res.json({ success: true });
   } catch (err: any) {
