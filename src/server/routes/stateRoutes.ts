@@ -7,7 +7,6 @@ import { configRepository } from '../../db/configRepository';
 import { opportunityRepository } from '../../db/opportunityRepository';
 import { symbolRepository } from '../../db/symbolRepository';
 import { profileRepository } from '../../db/profileRepository';
-
 import { opportunityRepository } from '../../db/opportunityRepository';
 
 export const stateRoutes = Router();
