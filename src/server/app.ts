@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import path from 'path';
 import { stateRoutes } from './routes/stateRoutes';
+import { chatRoutes } from './routes/chatRoutes';
 import { config } from '../config/env';
 
 export function createApp(): express.Application {
@@ -9,6 +10,7 @@ export function createApp(): express.Application {
 
   // API routes
   app.use('/api', stateRoutes);
+  app.use('/api/chat', chatRoutes);
 
   // Static dashboard
   app.use(express.static(path.join(__dirname, '..', '..', 'public')));
