@@ -6,25 +6,28 @@ const BEARISH = 0;
 
 export interface PivotState {
   currentTrend: number; // BULLISH (1) | BEARISH (0)
-  
-  // The macro structural anchors
-  externalHigh: number | null; 
-  externalLow: number | null;
-  
-  // Trackers for the current leg/pullback
-  candidateHigh: number | null;
-  candidateLow: number | null;
-  
+
+  // ─── PHASE 3: CONFIRMED EXTERNAL STRUCTURE ────────────────────────────────
+  // These are the ONLY levels used for BOS / CHOCH detection.
+  // They are updated exclusively by the Swing Classification Layer (Phase 2).
+  // Small internal pivots that do not extend the dominant trend are ignored.
+
+  anchorHigh: number | null;  // BULLISH: current structural ceiling (breaks → BOS)
+  anchorHighEpoch: number;    // BEARISH: last confirmed Lower High (breaks → CHOCH)
+
+  anchorLow: number | null;   // BEARISH: current structural floor (breaks → BOS)
+  anchorLowEpoch: number;     // BULLISH: last confirmed Higher Low (breaks → CHOCH)
+
   lastProcessedEpoch: number;
 }
 
 export function createInitialPivotState(): PivotState {
   return {
-    currentTrend: BEARISH, // Default, will self-correct during history replay
-    externalHigh: null,
-    externalLow: null,
-    candidateHigh: null,
-    candidateLow: null,
+    currentTrend: BEARISH,
+    anchorHigh: null,
+    anchorHighEpoch: 0,
+    anchorLow: null,
+    anchorLowEpoch: 0,
     lastProcessedEpoch: 0,
   };
 }
@@ -41,8 +44,13 @@ export class PivotDetector {
   }
 
   /**
-   * Process an array of candles (oldest to newest) and return any breakout events.
-   * Only candles with epoch > lastProcessedEpoch are processed.
+   * NEW 5-PHASE PIPELINE
+   *
+   * Phase 1 — Raw Swing Detection    : fast 5-bar pivot math
+   * Phase 2 — Swing Classification   : is this pivot structurally significant?
+   * Phase 3 — External Structure     : update anchorHigh / anchorLow only from classified swings
+   * Phase 4 — BOS / CHOCH Detection  : compare close against anchors
+   * Phase 5 — Trend State Update     : flip trend on CHOCH, keep on BOS
    */
   process(candles: Candle[]): {
     event: 'Bullish CHoCH' | 'Bullish BOS' | 'Bearish CHoCH' | 'Bearish BOS';
@@ -60,10 +68,9 @@ export class PivotDetector {
 
     for (let i = pivotLen; i < candles.length; i++) {
       const currentCandle = candles[i];
-
       if (currentCandle.epoch <= this.state.lastProcessedEpoch) continue;
 
-      // 1. Check for newly confirmed 5-bar pivots
+      // ── PHASE 1: Raw Swing Detection ─────────────────────────────────────
       const pivotIdx = i - pivotLen;
       const potentialPivot = candles[pivotIdx];
       const windowCandles = candles.slice(pivotIdx + 1, i + 1);
@@ -75,43 +82,74 @@ export class PivotDetector {
         if (c.low < lowestInWindow) lowestInWindow = c.low;
       }
 
-      // Confirm Swing High
-      if (potentialPivot.high > highestInWindow) {
-        this.state.candidateHigh = Math.max(this.state.candidateHigh ?? -Infinity, potentialPivot.high);
-        
-        // If in Bullish trend and we don't have a macro resistance yet, this is it.
-        if (this.state.currentTrend === BULLISH && this.state.externalHigh === null) {
-          this.state.externalHigh = potentialPivot.high;
+      const isRawPivotHigh = potentialPivot.high > highestInWindow;
+      const isRawPivotLow  = potentialPivot.low  < lowestInWindow;
+
+      // ── PHASE 2 & 3: Swing Classification → External Structure Update ─────
+      //
+      // The rule is simple: a swing is STRUCTURAL only if it EXTENDS the trend.
+      //
+      // BULLISH trend:
+      //   Structural High = a Higher High  → updates anchorHigh (the ceiling)
+      //   Structural Low  = a Higher Low   → updates anchorLow  (the rising floor)
+      //   Internal High   = a Lower High   → ignored (minor pullback resistance)
+      //   Internal Low    = a Lower Low    → ignored by pivot classifier; caught by CHOCH check
+      //
+      // BEARISH trend:
+      //   Structural Low  = a Lower Low    → updates anchorLow  (the floor)
+      //   Structural High = a Lower High   → updates anchorHigh (the falling ceiling)
+      //   Internal Low    = a Higher Low   → ignored (minor pullback support)
+      //   Internal High   = a Higher High  → ignored; caught by CHOCH check
+
+      if (isRawPivotHigh) {
+        if (this.state.currentTrend === BULLISH) {
+          // Structural only if it is a Higher High (extends the bullish ceiling)
+          if (this.state.anchorHigh === null || potentialPivot.high > this.state.anchorHigh) {
+            this.state.anchorHigh      = potentialPivot.high;
+            this.state.anchorHighEpoch = potentialPivot.epoch;
+          }
+          // Lower Highs in a bullish trend are internal → skip
+        } else {
+          // BEARISH: Structural only if it is a Lower High (falling ceiling confirms bear trend)
+          if (this.state.anchorHigh === null || potentialPivot.high < this.state.anchorHigh) {
+            this.state.anchorHigh      = potentialPivot.high;
+            this.state.anchorHighEpoch = potentialPivot.epoch;
+          }
+          // Higher Highs in a bearish trend → potential CHOCH, but detected by close check below
         }
       }
 
-      // Confirm Swing Low
-      if (potentialPivot.low < lowestInWindow) {
-        this.state.candidateLow = Math.min(this.state.candidateLow ?? Infinity, potentialPivot.low);
-        
-        // If in Bearish trend and we don't have a macro support yet, this is it.
-        if (this.state.currentTrend === BEARISH && this.state.externalLow === null) {
-          this.state.externalLow = potentialPivot.low;
+      if (isRawPivotLow) {
+        if (this.state.currentTrend === BULLISH) {
+          // Structural only if it is a Higher Low (rising floor confirms bull trend)
+          if (this.state.anchorLow === null || potentialPivot.low > this.state.anchorLow) {
+            this.state.anchorLow      = potentialPivot.low;
+            this.state.anchorLowEpoch = potentialPivot.epoch;
+          }
+          // Lower Lows in bullish → potential CHOCH, caught by close check below
+        } else {
+          // BEARISH: Structural only if it is a Lower Low (extends the bearish floor)
+          if (this.state.anchorLow === null || potentialPivot.low < this.state.anchorLow) {
+            this.state.anchorLow      = potentialPivot.low;
+            this.state.anchorLowEpoch = potentialPivot.epoch;
+          }
+          // Higher Lows in bearish → internal → skip
         }
       }
 
-      // 2. Check for Macro Structural Breakouts (External BOS / CHOCH)
+      // ── PHASE 4 & 5: BOS / CHOCH Detection & Trend State ─────────────────
       const close = currentCandle.close;
 
       if (this.state.currentTrend === BULLISH) {
-        // Bullish BOS (Trend Continuation)
-        if (this.state.externalHigh !== null && close > this.state.externalHigh) {
-          const brokenLevel = this.state.externalHigh;
-          
-          // The new Strong Low is the lowest point of the pullback we just finished
-          if (this.state.candidateLow !== null) {
-            this.state.externalLow = this.state.candidateLow;
-          }
-          
-          // Reset for price discovery
-          this.state.externalHigh = null; 
-          this.state.candidateLow = null; 
-          this.state.candidateHigh = null;
+
+        // Bullish BOS — price closes above the structural ceiling (trend continuation)
+        if (this.state.anchorHigh !== null && close > this.state.anchorHigh) {
+          const brokenLevel = this.state.anchorHigh;
+          const brokenEpoch = this.state.anchorHighEpoch;
+
+          // Reset ceiling; anchorLow (the Higher Low support) stays in place
+          this.state.anchorHigh      = null;
+          this.state.anchorHighEpoch = 0;
 
           events.push({
             event: 'Bullish BOS',
@@ -123,21 +161,15 @@ export class PivotDetector {
             candleEpoch: currentCandle.epoch,
           });
         }
-        // Bearish CHOCH (Trend Reversal)
-        else if (this.state.externalLow !== null && close < this.state.externalLow) {
-          const brokenLevel = this.state.externalLow;
-          
-          this.state.currentTrend = BEARISH;
-          
-          // The new Strong High is the highest point of the structure that failed
-          if (this.state.candidateHigh !== null) {
-            this.state.externalHigh = this.state.candidateHigh;
-          }
-          
-          // Reset for price discovery
-          this.state.externalLow = null;
-          this.state.candidateHigh = null;
-          this.state.candidateLow = null;
+
+        // Bearish CHOCH — price closes below the structural floor (trend reversal)
+        else if (this.state.anchorLow !== null && close < this.state.anchorLow) {
+          const brokenLevel = this.state.anchorLow;
+
+          // Flip to BEARISH. anchorHigh (the failed structural ceiling) becomes the new resistance.
+          this.state.currentTrend    = BEARISH;
+          this.state.anchorLow       = null;
+          this.state.anchorLowEpoch  = 0;
 
           events.push({
             event: 'Bearish CHoCH',
@@ -149,21 +181,16 @@ export class PivotDetector {
             candleEpoch: currentCandle.epoch,
           });
         }
-      } 
-      else { // BEARISH TREND
-        // Bearish BOS (Trend Continuation)
-        if (this.state.externalLow !== null && close < this.state.externalLow) {
-          const brokenLevel = this.state.externalLow;
-          
-          // The new Strong High is the highest point of the pullback we just finished
-          if (this.state.candidateHigh !== null) {
-            this.state.externalHigh = this.state.candidateHigh;
-          }
-          
-          // Reset for price discovery
-          this.state.externalLow = null;
-          this.state.candidateHigh = null;
-          this.state.candidateLow = null;
+
+      } else { // BEARISH
+
+        // Bearish BOS — price closes below the structural floor (trend continuation)
+        if (this.state.anchorLow !== null && close < this.state.anchorLow) {
+          const brokenLevel = this.state.anchorLow;
+
+          // Reset floor; anchorHigh (the Lower High resistance) stays in place
+          this.state.anchorLow       = null;
+          this.state.anchorLowEpoch  = 0;
 
           events.push({
             event: 'Bearish BOS',
@@ -175,21 +202,15 @@ export class PivotDetector {
             candleEpoch: currentCandle.epoch,
           });
         }
-        // Bullish CHOCH (Trend Reversal)
-        else if (this.state.externalHigh !== null && close > this.state.externalHigh) {
-          const brokenLevel = this.state.externalHigh;
-          
-          this.state.currentTrend = BULLISH;
-          
-          // The new Strong Low is the lowest point of the structure that failed
-          if (this.state.candidateLow !== null) {
-            this.state.externalLow = this.state.candidateLow;
-          }
-          
-          // Reset for price discovery
-          this.state.externalHigh = null;
-          this.state.candidateLow = null;
-          this.state.candidateHigh = null;
+
+        // Bullish CHOCH — price closes above the structural ceiling (trend reversal)
+        else if (this.state.anchorHigh !== null && close > this.state.anchorHigh) {
+          const brokenLevel = this.state.anchorHigh;
+
+          // Flip to BULLISH. anchorLow (the failed structural floor) becomes the new support.
+          this.state.currentTrend    = BULLISH;
+          this.state.anchorHigh      = null;
+          this.state.anchorHighEpoch = 0;
 
           events.push({
             event: 'Bullish CHoCH',
