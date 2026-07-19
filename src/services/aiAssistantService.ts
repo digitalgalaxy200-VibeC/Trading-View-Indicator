@@ -22,14 +22,20 @@ You do NOT scan the market yourself. You read objective data produced by the Mar
 
 CRITICAL ENGINE GUARANTEE: Every BOS and CHoCH event you receive has already been validated by the engine as a CONFIRMED EXTERNAL STRUCTURAL BREAK. The engine uses body-close confirmation (not wicks) and strict higher-high / lower-low classification to filter out all internal noise and sub-structure. You must NEVER speculate about whether a reported BOS is "internal" or "external" — by the time you see it, it is already confirmed external structure.
 
+CRITICAL DATA RULES — NEVER VIOLATE THESE:
+1. NEVER state a price, trend, BOS level, or CHoCH level from memory or conversation history.
+2. ALWAYS call get_market_state or get_recent_events FIRST before answering any question about market data.
+3. If the user says your data is wrong, immediately call the tools again — do NOT guess a correction.
+4. The live context injected at the top of this prompt is the ground truth. Use it. Do not contradict it.
+5. If a tool returns no data, say so honestly — do not fill in numbers.
+
 Your responsibilities:
-1. Answer questions about market structure using the data tools available to you.
+1. Answer questions about market structure using the live data tools.
 2. Explain why a specific event occurred in the context of the user's strategy.
 3. Create watch tasks based on what the user asks you to monitor.
 4. Be concise, analytical, and use professional SMC terminology (BOS, CHoCH, swing high/low, impulse, correction, displacement, etc.).
 5. NEVER give buy/sell entry recommendations.
 6. ALWAYS end trading-related responses with: "The final trading decision belongs entirely to you."
-7. If you are uncertain about any data, call a tool to retrieve the current engine state rather than speculating.
 
 When you create a watch task, confirm clearly with: "Watch created: [condition]"`;
 
@@ -141,7 +147,28 @@ export class AiAssistantService {
   static async chat(userMessage: string, history: ChatMessage[] = []): Promise<string> {
     const tradingProfile = profileRepository.get();
 
-    let dynamicSystemPrompt = `${SYSTEM_PROMPT}\n\nUSER'S TRADING PROFILE (Apply these rules to all analysis):\n${tradingProfile}`;
+    // ── Pre-fetch live market data and inject as ground truth ────────────────
+    // This ensures the AI ALWAYS has current data in context regardless of
+    // whether it decides to call tools. Eliminates hallucinated prices.
+    const liveMarketState = executeTool('get_market_state', {});
+    const liveRecentEvents = executeTool('get_recent_events', { limit: 15 });
+    const liveDataBlock = `
+== LIVE ENGINE DATA (Ground Truth — injected at ${new Date().toISOString()}) ==
+
+Current Market State:
+${liveMarketState}
+
+Most Recent Structural Events (newest first):
+${liveRecentEvents}
+
+== END LIVE DATA ==
+IMPORTANT: The data above is the ONLY authoritative source of market prices and trend states. Never use any price or trend from conversation history — always use these live values.`;
+
+    let dynamicSystemPrompt = `${SYSTEM_PROMPT}
+
+${liveDataBlock}
+
+USER'S TRADING PROFILE (Apply these rules to all analysis):\n${tradingProfile}`;
     if (history.length === 0) {
       dynamicSystemPrompt += `\n\nCRITICAL INSTRUCTION: Since this is a new conversation, begin your response exactly with: "Trading Profile loaded successfully. I'll analyze the market using your saved methodology."`;
     }
@@ -159,7 +186,7 @@ export class AiAssistantService {
     for (let round = 0; round < 5; round++) {
       const body = {
         model: config.deepseekModel,
-        temperature: 0.5,
+        temperature: 0.3,
         max_tokens: 800,
         messages,
         tools: TOOLS,
