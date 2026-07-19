@@ -4,6 +4,8 @@ import { eventRepository } from '../../db/eventRepository';
 import { alertRepository } from '../../db/alertRepository';
 import { emailRepository } from '../../db/emailRepository';
 import { configRepository } from '../../db/configRepository';
+import { watchTaskRepository } from '../../db/watchTaskRepository';
+import { symbolRepository } from '../../db/symbolRepository';
 
 export const stateRoutes = Router();
 
@@ -102,6 +104,41 @@ stateRoutes.get('/config', (_req: Request, res: Response) => {
 stateRoutes.patch('/config', (req: Request, res: Response) => {
   try {
     configRepository.update(req.body);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Watch Tasks (System 2) ──
+
+stateRoutes.get('/watches', (_req: Request, res: Response) => {
+  try {
+    res.json(watchTaskRepository.getAll());
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+stateRoutes.post('/watches', (req: Request, res: Response) => {
+  try {
+    const { ticker, condition, timeframe, priority } = req.body;
+    if (!ticker || !condition) return res.status(400).json({ error: 'ticker and condition are required' });
+    
+    const symbolId = symbolRepository.getId(ticker);
+    if (!symbolId) return res.status(400).json({ error: `Unknown ticker: ${ticker}` });
+
+    const task = watchTaskRepository.insert(symbolId, condition, timeframe ?? '15m', priority ?? 'normal');
+    res.json(task);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+stateRoutes.patch('/watches/:id/cancel', (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    watchTaskRepository.updateStatus(id, 'cancelled', 'Cancelled by user.');
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

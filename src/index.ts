@@ -6,6 +6,7 @@ import { marketStateRepository } from './db/marketStateRepository';
 import { DerivClient } from './api/derivClient';
 import { CandleManager } from './engine/candleManager';
 import { ConfirmationLayer } from './engine/confirmationLayer';
+import { WatchTaskEngine } from './engine/watchTaskEngine';
 import { AlertQueue } from './notification/alertQueue';
 import { NotificationEngine } from './notification/notificationEngine';
 import { startServer } from './server/app';
@@ -24,9 +25,13 @@ initializeDatabase();
 // ── Shared Alert Queue ──
 const alertQueue = new AlertQueue();
 
-// ── Notification Engine ──
+// ── System 1: Notification Engine ──
 const notificationEngine = new NotificationEngine(alertQueue);
 notificationEngine.start();
+
+// ── System 2: Watch Task Engine ──
+const watchTaskEngine = new WatchTaskEngine();
+watchTaskEngine.start();
 
 // ── Deriv WebSocket Client ──
 const derivClient = new DerivClient();
@@ -60,6 +65,11 @@ const onEventDetected = (symbol: string, rawEvent: Omit<BreakoutEvent, 'symbol'>
   } else {
     console.log(`  ⏭ Event is CHoCH. Suppressed from notification queue.`);
   }
+
+  // ── System 2: Evaluate active watch tasks for this symbol ──
+  watchTaskEngine.onEvent(event).catch(err =>
+    console.error('  ⚠️ WatchTaskEngine error:', err.message)
+  );
 };
 
 // ── Create CandleManager per symbol ──
@@ -89,10 +99,12 @@ startServer();
 process.on('SIGINT', () => {
   console.log('\nShutting down...');
   notificationEngine.stop();
+  watchTaskEngine.stop();
   process.exit(0);
 });
 process.on('SIGTERM', () => {
   console.log('\nShutting down...');
   notificationEngine.stop();
+  watchTaskEngine.stop();
   process.exit(0);
 });
