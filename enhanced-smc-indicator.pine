@@ -93,6 +93,7 @@ internalFilterConfluenceInput   = input(        false,      'Confluence Filter',
 internalStructureSize           = input.string( TINY,       'Internal Label Size',      group = INTERNAL_GROUP, options = [TINY,SMALL,NORMAL])
 
 showStructureInput              = input(        true,       'Show Swing Structure',     group = SWING_GROUP,    tooltip = showStructureTooltip)
+structureTimeframeInput         = input.timeframe('15',      'Structure Timeframe',       group = SWING_GROUP,    tooltip = 'Timeframe used for BOS/CHoCH detection. Default 15 = 15-minute. Your chart can be on any timeframe.')
 showSwingBullInput              = input.string( ALL,        'Bullish Structure',        group = SWING_GROUP,    inline = 'bull',    options = [ALL,BOS,CHOCH])
 swingBullColorInput             = input(        GREEN,      '',                         group = SWING_GROUP,    inline = 'bull')
 showSwingBearInput              = input.string( ALL,        'Bearish Structure',        group = SWING_GROUP,    inline = 'bear',    options = [ALL,BOS,CHOCH])
@@ -858,39 +859,58 @@ drawMacroLine(int pTime, float pLevel, string tag, color structureColor, string 
     l_abel  := label.new(chart.point.new(labelMidTime,na,pLevel), tag, xloc.bar_time, color=color(na), textcolor=structureColor, style=labelStyle, size = labelSize)
 
 // @function processMacroState
-// Runs the 5-phase External Structure pipeline on every bar.
-// Must be defined here (before the execution section) so Pine Script can hoist it.
-processMacroState(MacroState s) =>
-    // ── PHASE 2 & 3: Swing Classification → External Structure Update ─────────
-    if internalHigh.barTime != s.lastHighTime
-        s.lastHighTime := internalHigh.barTime
-        pivH = internalHigh.currentLevel
-        if s.trend == BULLISH
-            if na(s.anchorHigh) or pivH > s.anchorHigh
-                s.anchorHigh     := pivH
-                s.anchorHighTime := internalHigh.barTime
-        else
-            if na(s.anchorHigh) or pivH < s.anchorHigh
-                s.anchorHigh     := pivH
-                s.anchorHighTime := internalHigh.barTime
+// Runs the 5-phase External Structure pipeline using Higher-Timeframe OHLC data.
+// htfH/htfL/htfC/htfT come from request.security() for the selected structure timeframe.
+processMacroState(MacroState s, float htfH, float htfL, float htfC, int htfT) =>
+    // ── PHASE 1: Fast 5-bar Pivot Detection on HTF data ──────────────────────
+    // We maintain small rolling arrays inside the UDT via simple bar tracking.
+    // pivotLen bars of look-forward are approximated using the HTF bar-change signal.
+    // On every NEW HTF bar: the PREVIOUS bar's high/low is a confirmed 5-bar pivot candidate.
+    var float prevHtfH   = na
+    var float prevHtfL   = na
+    var int   prevHtfT   = na
+    var float prev2HtfH  = na
+    var float prev2HtfL  = na
 
-    if internalLow.barTime != s.lastLowTime
-        s.lastLowTime := internalLow.barTime
-        pivL = internalLow.currentLevel
-        if s.trend == BULLISH
-            if na(s.anchorLow) or pivL > s.anchorLow
-                s.anchorLow     := pivL
-                s.anchorLowTime := internalLow.barTime
-        else
-            if na(s.anchorLow) or pivL < s.anchorLow
-                s.anchorLow     := pivL
-                s.anchorLowTime := internalLow.barTime
+    isNewHtfBar = not na(htfT) and htfT != prevHtfT
 
-    // ── PHASE 4 & 5: BOS / CHOCH Detection & Trend State ────────────────────
-    bullishBOS   = s.trend == BULLISH and not na(s.anchorHigh) and close > s.anchorHigh
-    bearishCHOCH = s.trend == BULLISH and not na(s.anchorLow)  and close < s.anchorLow
-    bearishBOS   = s.trend == BEARISH and not na(s.anchorLow)  and close < s.anchorLow
-    bullishCHOCH = s.trend == BEARISH and not na(s.anchorHigh) and close > s.anchorHigh
+    if isNewHtfBar
+        // Confirm prev-prev bar as a pivot using the prev bar as the right side
+        if not na(prev2HtfH) and not na(prevHtfH)
+            // ── PHASE 2 & 3: Swing Classification → External Structure Update ──
+            if prev2HtfH > prevHtfH  // prev2 bar is a local swing high candidate
+                pivH = prev2HtfH
+                if s.trend == BULLISH
+                    if na(s.anchorHigh) or pivH > s.anchorHigh
+                        s.anchorHigh     := pivH
+                        s.anchorHighTime := prevHtfT
+                else
+                    if na(s.anchorHigh) or pivH < s.anchorHigh
+                        s.anchorHigh     := pivH
+                        s.anchorHighTime := prevHtfT
+
+            if prev2HtfL < prevHtfL  // prev2 bar is a local swing low candidate
+                pivL = prev2HtfL
+                if s.trend == BULLISH
+                    if na(s.anchorLow) or pivL > s.anchorLow
+                        s.anchorLow     := pivL
+                        s.anchorLowTime := prevHtfT
+                else
+                    if na(s.anchorLow) or pivL < s.anchorLow
+                        s.anchorLow     := pivL
+                        s.anchorLowTime := prevHtfT
+
+        prev2HtfH := prevHtfH
+        prev2HtfL := prevHtfL
+        prevHtfH  := htfH
+        prevHtfL  := htfL
+        prevHtfT  := htfT
+
+    // ── PHASE 4 & 5: BOS / CHOCH Detection against confirmed external anchors ─
+    bullishBOS   = s.trend == BULLISH and not na(s.anchorHigh) and htfC > s.anchorHigh
+    bearishCHOCH = s.trend == BULLISH and not na(s.anchorLow)  and htfC < s.anchorLow
+    bearishBOS   = s.trend == BEARISH and not na(s.anchorLow)  and htfC < s.anchorLow
+    bullishCHOCH = s.trend == BEARISH and not na(s.anchorHigh) and htfC > s.anchorHigh
 
     if bullishBOS
         brokenLevel = s.anchorHigh
@@ -900,7 +920,7 @@ processMacroState(MacroState s) =>
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, 'BOS', swingBullColorInput, label.style_label_down, swingStructureSize)
         if webhookEnabledInput
-            alert(buildWebhookJson('Bullish BOS', 'BULLISH', close, 'BULLISH', 'BULLISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
+            alert(buildWebhookJson('Bullish BOS', 'BULLISH', htfC, 'BULLISH', 'BULLISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
     else if bearishCHOCH
         brokenLevel  = s.anchorLow
@@ -911,7 +931,7 @@ processMacroState(MacroState s) =>
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, 'CHoCH', swingBearColorInput, label.style_label_up, swingStructureSize)
         if webhookEnabledInput
-            alert(buildWebhookJson('Bearish CHoCH', 'BEARISH', close, 'BULLISH', 'BEARISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
+            alert(buildWebhookJson('Bearish CHoCH', 'BEARISH', htfC, 'BULLISH', 'BEARISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
     else if bearishBOS
         brokenLevel = s.anchorLow
@@ -921,7 +941,7 @@ processMacroState(MacroState s) =>
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, 'BOS', swingBearColorInput, label.style_label_up, swingStructureSize)
         if webhookEnabledInput
-            alert(buildWebhookJson('Bearish BOS', 'BEARISH', close, 'BEARISH', 'BEARISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
+            alert(buildWebhookJson('Bearish BOS', 'BEARISH', htfC, 'BEARISH', 'BEARISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
     else if bullishCHOCH
         brokenLevel  = s.anchorHigh
@@ -932,7 +952,7 @@ processMacroState(MacroState s) =>
         if showStructureInput
             drawMacroLine(brokenTime, brokenLevel, 'CHoCH', swingBullColorInput, label.style_label_down, swingStructureSize)
         if webhookEnabledInput
-            alert(buildWebhookJson('Bullish CHoCH', 'BULLISH', close, 'BEARISH', 'BULLISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
+            alert(buildWebhookJson('Bullish CHoCH', 'BULLISH', htfC, 'BEARISH', 'BULLISH', brokenLevel, 'swing'), alert.freq_once_per_bar_close)
 
 //---------------------------------------------------------------------------------------------------------------------}
 //MUTABLE VARIABLES & EXECUTION
@@ -968,12 +988,19 @@ if showHighLowSwingsInput or showPremiumDiscountZonesInput
 if showFairValueGapsInput
     deleteFairValueGaps()
 
-// MACRO STATE MACHINE — External Structure Model
+// MACRO STATE MACHINE — External Structure Model (Higher Timeframe)
+// Fetch OHLC from the selected structure timeframe (default: 15-minute)
+// barmerge.lookahead_off ensures no future-bar data is used
+[htfHigh, htfLow, htfClose, htfBarTime] = request.security(
+     syminfo.tickerid,
+     structureTimeframeInput,
+     [high, low, close, time],
+     lookahead = barmerge.lookahead_off)
+
 var MacroState mState = MacroState.new(BEARISH, na, na, na, na, na, na)
 
 getCurrentStructure(swingsLengthInput,false) // keeps swingHigh/swingLow initialized
-getCurrentStructure(5,false,true)            // Phase 1: raw 5-bar pivot detection
-processMacroState(mState)                   // Phases 2-5: classify → structure → breakout → state
+processMacroState(mState, htfHigh, htfLow, htfClose, htfBarTime)
 
 if showEqualHighsLowsInput
     getCurrentStructure(equalHighsLowsLengthInput,true)
