@@ -8,8 +8,10 @@ import { CandleManager } from './engine/candleManager';
 import { processCandle, checkEntryFill } from './engine/continuationEngine';
 import { AlertQueue } from './notification/alertQueue';
 import { NotificationEngine } from './notification/notificationEngine';
+import { buildStructureAlert } from './notification/structureAlertBuilder';
+import { generateSetupCommentary } from './api/deepseekClient';
 import { startServer } from './server/app';
-import { BreakoutEvent, OpportunityRow, EngineAction } from './types';
+import { Candle, EngineAction } from './types';
 
 console.log('============================================');
 console.log('🚀 Continuation Engine v5 Starting...');
@@ -25,9 +27,46 @@ notificationEngine.start();
 const derivClient = new DerivClient();
 const managers = new Map<string, CandleManager>();
 
+// Per-symbol 5m candle buffer — used to feed the commentary generator
+const recentCandles5m = new Map<string, Candle[]>();
+
 for (const symbol of config.symbols) {
-  // Use pivotLen from config
   managers.set(symbol, new CandleManager(symbol, config.pivotLength));
+  recentCandles5m.set(symbol, []);
+}
+
+// ── Log engine actions to DB (for dashboard/stats) ─────────────────────────
+function logAction(symbol: string, action: EngineAction): void {
+  const symbolId = symbolRepository.getId(symbol);
+  if (!symbolId) return;
+
+  const trendAfter = action.kind === 'CHOCH_WARNING' || action.kind === 'LEG_ARMED'
+    ? action.event.direction.toUpperCase()
+    : action.trade.direction.toUpperCase();
+
+  const price = action.kind === 'CHOCH_WARNING' || action.kind === 'LEG_ARMED'
+    ? action.event.price
+    : action.trade.entry;
+
+  const isChoch = action.kind === 'CHOCH_WARNING';
+
+  marketStateRepository.upsert(symbolId, trendAfter, price, isChoch);
+
+  // Save structural events (BOS/CHoCH) to events table for the dashboard
+  if (action.kind === 'CHOCH_WARNING' || action.kind === 'LEG_ARMED') {
+    eventRepository.insert({
+      symbol,
+      event: action.event.type === 'CHOCH'
+        ? (action.event.direction === 'bullish' ? 'Bullish CHoCH' : 'Bearish CHoCH')
+        : (action.event.direction === 'bullish' ? 'Bullish BOS' : 'Bearish BOS'),
+      direction: trendAfter as any,
+      price: action.event.price,
+      pivotLevel: action.event.leg.originPrice,
+      trendBefore: trendAfter === 'BULLISH' ? 'BEARISH' : 'BULLISH',
+      trendAfter: trendAfter as any,
+      candleEpoch: action.event.time / 1000,
+    }, symbolId);
+  }
 }
 
 derivClient.onHistory((symbol, timeframe, candles) => {
@@ -39,72 +78,47 @@ derivClient.onCandleClosed((symbol, timeframe, candle) => {
   const manager = managers.get(symbol);
   if (!manager) return;
 
+  // Keep 5m buffer for commentary
+  if (timeframe === '5m') {
+    const buf = recentCandles5m.get(symbol) || [];
+    buf.push(candle);
+    if (buf.length > 50) buf.shift();
+    recentCandles5m.set(symbol, buf);
+  }
+
   const res = manager.onNewCandleClosed(timeframe, candle);
-  
-  if (timeframe === '5m' && res) {
-    // Process LTF continuation engine
+  if (!res) return;
+
+  if (timeframe === '5m') {
     const htfBias = manager.getHtfState().bias;
     const ltfState = manager.getLtfState();
-    
+
     const { actions: processActions } = processCandle(ltfState, candle, res.event, htfBias);
     const fillActions = checkEntryFill(ltfState, candle);
-    
-    const allActions = [...processActions, ...fillActions];
-    
-    for (const action of allActions) {
-      if (action.kind === 'LEG_ARMED' || action.kind === 'TRADE_ENTERED') {
-        const symbolId = symbolRepository.getId(symbol);
-        if (!symbolId) continue;
-        
-        // Map to OpportunityRow so notification engine can consume it
-        const opp: OpportunityRow = {
-          id: Date.now(), // ephemeral ID
-          symbol_id: symbolId,
-          direction: action.kind === 'LEG_ARMED' ? action.event.direction : action.trade.direction,
-          workflow_type: 'continuation',
-          watch_level: action.kind === 'LEG_ARMED' ? 2 : 3,
-          status: 'active',
-          choch_event_id: null,
-          bos_event_id: null,
-          impulse_high: action.kind === 'LEG_ARMED' ? action.event.leg.extremePrice : action.trade.target,
-          impulse_low: action.kind === 'LEG_ARMED' ? action.event.leg.originPrice : action.trade.stop,
-          fib_0: action.kind === 'LEG_ARMED' ? action.fib.stop : action.trade.stop,
-          fib_50: action.kind === 'LEG_ARMED' ? action.fib.entry : action.trade.entry,
-          fib_100: action.kind === 'LEG_ARMED' ? action.fib.target : action.trade.target,
-          entry_price: action.kind === 'LEG_ARMED' ? action.fib.entry : action.trade.entry,
-          stop_loss: action.kind === 'LEG_ARMED' ? action.fib.stop : action.trade.stop,
-          take_profit: action.kind === 'LEG_ARMED' ? action.fib.target : action.trade.target,
-          risk_reward: 1,
-          created_at: Date.now(),
-          updated_at: Date.now(),
-          notified_at: null,
-        };
-        alertQueue.enqueueOpportunity(opp);
+
+    for (const action of [...processActions, ...fillActions]) {
+      // Log EVERY action to DB for the dashboard
+      logAction(symbol, action);
+
+      // Only LEG_ARMED triggers a notification email
+      if (action.kind === 'LEG_ARMED') {
+        const alert = buildStructureAlert(action.event, action.fib);
+        const candles = recentCandles5m.get(symbol) || [];
+        const chainCount = ltfState.trade?.chainCount ?? 1;
+
+        // Fire commentary and alert in parallel — alert is never gated on AI
+        generateSetupCommentary(action.event, action.fib, candles, chainCount)
+          .then(commentary => {
+            // Attach commentary to the alert object for notificationEngine to pick up
+            (alert as any).__commentary = commentary;
+            alertQueue.pushStructureAlert(alert);
+          })
+          .catch(() => {
+            // AI failed — still send the alert immediately without commentary
+            alertQueue.pushStructureAlert(alert);
+          });
       }
-    }
-    
-    // Maintain backwards compatibility for market state / dashboard
-    if (res.event) {
-      const symbolId = symbolRepository.getId(symbol);
-      if (symbolId) {
-        const isChoch = res.event.type === 'CHOCH';
-        const trendAfter = res.event.direction.toUpperCase();
-        marketStateRepository.upsert(symbolId, trendAfter, res.event.price, isChoch);
-        
-        // Insert event if it's BOS so dashboard sees it
-        if (!isChoch) {
-          eventRepository.insert({
-            symbol: res.event.symbol,
-            event: res.event.direction === 'bullish' ? 'Bullish BOS' : 'Bearish BOS',
-            direction: res.event.direction.toUpperCase() as any,
-            price: res.event.price,
-            pivotLevel: res.event.leg.originPrice,
-            trendBefore: 'BULLISH', // Not used rigorously anymore
-            trendAfter: trendAfter as any,
-            candleEpoch: res.event.time / 1000
-          }, symbolId);
-        }
-      }
+      // CHOCH_WARNING, TRADE_ENTERED, TARGET_HIT, STOP_HIT → DB only, no email
     }
   }
 });

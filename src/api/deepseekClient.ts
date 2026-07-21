@@ -1,5 +1,5 @@
 import { config } from '../config/env';
-import { AlertWithDetails } from '../types';
+import { AlertWithDetails, StructureEvent, FibLevels, Candle } from '../types';
 import { getTradingViewUrl } from '../utils/tradingViewUrl';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
@@ -129,5 +129,62 @@ export class DeepSeekClient {
     } catch {
       return 'Score unavailable.';
     }
+  }
+}
+
+// ── Commentary-only call — one sentence, no prices, no recommendations ──────
+const COMMENTARY_SYSTEM_PROMPT = `
+You add ONE short sentence of context to a trading alert. Rules:
+- Output exactly one sentence, plain text, no markdown, no lists.
+- Never state or restate any price, time, or the symbol name.
+- Never say "buy", "sell", "enter", "take this trade", or give a recommendation of any kind.
+- Only comment on: candle/displacement strength relative to recent bars, how many continuation legs deep this run is, or recent volatility.
+- If you are not confident you have enough information to say something useful, output exactly: NO_COMMENT
+`.trim();
+
+export async function generateSetupCommentary(
+  event: StructureEvent,
+  fib: FibLevels,
+  recentCandles: Candle[],
+  chainCount: number
+): Promise<string | null> {
+  try {
+    const userPrompt = JSON.stringify({
+      direction: event.direction,
+      chainCount,
+      recentCandleRanges: recentCandles.slice(-10).map(c => +(c.high - c.low).toFixed(5)),
+    });
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    const response = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.deepseekApiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.deepseekModel,
+        temperature: 0.3,
+        max_tokens: 80,
+        messages: [
+          { role: 'system', content: COMMENTARY_SYSTEM_PROMPT },
+          { role: 'user',   content: userPrompt },
+        ],
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) return null;
+    const data = await response.json() as any;
+    const text = data.choices?.[0]?.message?.content?.trim();
+    if (!text || text === 'NO_COMMENT') return null;
+    return text;
+  } catch {
+    // timeout, network error, or any failure — never block the alert
+    return null;
   }
 }

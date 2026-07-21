@@ -1,7 +1,7 @@
 import { AlertQueue } from './alertQueue';
 import { shouldSendBatch } from './batchDecider';
 import { DeepSeekClient } from '../api/deepseekClient';
-import { sendBatchEmail, sendOpportunityEmail } from './emailDispatcher';
+import { sendBatchEmail, sendOpportunityEmail, sendStructureAlertEmail } from './emailDispatcher';
 import { emailRepository } from '../db/emailRepository';
 import { configRepository } from '../db/configRepository';
 import { opportunityRepository } from '../db/opportunityRepository';
@@ -27,7 +27,18 @@ export class NotificationEngine {
 
   private async tick(): Promise<void> {
     try {
-      // ── V4: L3 Opportunities take priority — send immediately ──
+      // ── V5: Structure alerts (LEG_ARMED) — fire immediately, no batching ──
+      const structureAlerts = this.queue.getPendingStructureAlerts();
+      if (structureAlerts.length > 0) {
+        this.queue.clearStructureAlerts();
+        for (const alert of structureAlerts) {
+          // commentary is already attached; send straight to email
+          const commentary = (alert as any).__commentary ?? null;
+          await sendStructureAlertEmail(alert, commentary);
+        }
+      }
+
+      // ── L3 Opportunities — send immediately ──
       const l3Opps = this.queue.getPendingOpportunities();
       if (l3Opps.length > 0) {
         await this.sendL3Opportunities(l3Opps);
