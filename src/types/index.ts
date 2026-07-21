@@ -14,7 +14,9 @@ export interface BreakoutEvent {
 // ── Candle Data ──
 
 export interface Candle {
-  epoch: number;   // Unix seconds
+  symbol: string;
+  timeframe: string;
+  time: number;
   open: number;
   high: number;
   low: number;
@@ -154,3 +156,78 @@ export interface OpportunityScore {
   total: number;               // 0-100
   deductions: string[];
 }
+
+// ── V5: Continuation Engine Types ──
+
+export type Direction = 'bullish' | 'bearish';
+export type Bias = Direction | 'neutral';
+
+export interface SwingPoint {
+  index: number;            // index in the candle buffer at time of detection
+  time: number;
+  price: number;
+  type: 'high' | 'low';
+}
+
+export interface Leg {
+  direction: Direction;
+  originPrice: number;      // the swing that will become SL (0%)
+  originTime: number;
+  extremePrice: number;     // the swing that just got broken (100%)
+  extremeTime: number;
+}
+
+export interface FibLevels {
+  entry: number;             // 50%
+  stop: number;               // 0% (leg origin)
+  target: number;             // 100% (leg extreme)
+  rr: number;                 // sanity-check, should always compute to 1
+}
+
+export interface StructureEvent {
+  symbol: string;
+  timeframe: string;
+  type: 'BOS' | 'CHOCH';
+  direction: Direction;
+  price: number;              // the level that was broken
+  time: number;
+  leg: Leg;                   // the leg this break defines
+}
+
+export type ContinuationStage =
+  | 'IDLE'          // no active bias-aligned setup
+  | 'CHOCH_WARN'     // CHoCH seen, watching for confirming BOS
+  | 'ARMED'          // BOS confirmed, leg + fib set, waiting for 50% retrace
+  | 'IN_TRADE';      // entry filled, waiting for TP or SL
+
+export interface ActiveTrade {
+  symbol: string;
+  direction: Direction;
+  entry: number;
+  stop: number;
+  target: number;
+  entryTime: number;
+  chainCount: number;        // how many continuation trades deep in this run
+}
+
+export interface ContinuationState {
+  symbol: string;
+  timeframe: string;
+  stage: ContinuationStage;
+  bias: Bias;
+  leg: Leg | null;
+  fib: FibLevels | null;
+  trade: ActiveTrade | null;
+  confirmCount: number;       // consecutive candles confirming a chain-continuation BOS
+  lastSwingHigh: SwingPoint | null;
+  lastSwingLow: SwingPoint | null;
+  highBroken: boolean;
+  lowBroken: boolean;
+}
+
+export type EngineAction =
+  | { kind: 'CHOCH_WARNING'; event: StructureEvent }
+  | { kind: 'LEG_ARMED'; event: StructureEvent; fib: FibLevels }
+  | { kind: 'TRADE_ENTERED'; trade: ActiveTrade }
+  | { kind: 'TARGET_HIT'; trade: ActiveTrade; price: number; time: number }
+  | { kind: 'STOP_HIT'; trade: ActiveTrade; price: number; time: number };

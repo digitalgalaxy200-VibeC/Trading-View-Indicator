@@ -1,54 +1,65 @@
-import { Candle } from '../types';
-import { StructureEngine, StructureState, createInitialStructureState } from './structureEngine';
-
-export type EventHandler = (event: {
-  event: 'Bullish CHoCH' | 'Bullish BOS' | 'Bearish CHoCH' | 'Bearish BOS';
-  direction: 'BULLISH' | 'BEARISH';
-  price: number;
-  pivotLevel: number;
-  trendBefore: 'BULLISH' | 'BEARISH';
-  trendAfter: 'BULLISH' | 'BEARISH';
-  candleEpoch: number;
-}) => void;
+import { Candle, ContinuationState, StructureEvent } from '../types';
+import { createStructureState, updateStructure } from './structureEngine';
 
 export class CandleManager {
-  private candles: Candle[] = [];
-  private engine: StructureEngine;
-  private onEvent: EventHandler;
-  private initialized = false;
+  private candles15m: Candle[] = [];
+  private candles5m: Candle[] = [];
+  
+  private state15m: ContinuationState;
+  private state5m: ContinuationState;
+  
+  private pivotLen: number;
 
-  constructor(onEvent: EventHandler, state?: StructureState) {
-    this.onEvent = onEvent;
-    this.engine = new StructureEngine(state || createInitialStructureState());
+  constructor(symbol: string, pivotLen: number) {
+    this.pivotLen = pivotLen;
+    this.state15m = createStructureState(symbol, '15m');
+    this.state5m = createStructureState(symbol, '5m');
   }
 
-  getState(): StructureState {
-    return this.engine.getState();
+  getHtfState(): ContinuationState {
+    return this.state15m;
   }
 
-  initializeHistory(historicalCandles: Candle[]): void {
-    this.candles = historicalCandles.sort((a, b) => a.epoch - b.epoch);
-    this.initialized = true;
-    console.log(`  CandleManager: loaded ${this.candles.length} historical candles.`);
-
-    // Silently process history to hydrate structural state — no events emitted
-    this.engine.process(this.candles);
+  getLtfState(): ContinuationState {
+    return this.state5m;
   }
 
-  onNewCandleClosed(candle: Candle): void {
-    if (!this.initialized) return;
-
-    this.candles.push(candle);
-
-    // Keep only the last 300 candles to bound memory
-    // (we need more than old engine since 3-bar pivot needs neighbours)
-    if (this.candles.length > 300) {
-      this.candles = this.candles.slice(-300);
+  initializeHistory(timeframe: string, historicalCandles: Candle[]): void {
+    const sorted = historicalCandles.sort((a, b) => a.time - b.time);
+    
+    if (timeframe === '15m') {
+      this.candles15m = sorted;
+      // Replay history
+      for (let i = this.pivotLen + 1; i <= this.candles15m.length; i++) {
+        const slice = this.candles15m.slice(0, i);
+        const { state } = updateStructure(this.state15m, slice, this.pivotLen);
+        this.state15m = state;
+      }
+    } else if (timeframe === '5m') {
+      this.candles5m = sorted;
+      // Replay history
+      for (let i = this.pivotLen + 1; i <= this.candles5m.length; i++) {
+        const slice = this.candles5m.slice(0, i);
+        const { state } = updateStructure(this.state5m, slice, this.pivotLen);
+        this.state5m = state;
+      }
     }
+  }
 
-    const events = this.engine.process(this.candles);
-    for (const event of events) {
-      this.onEvent(event);
+  onNewCandleClosed(timeframe: string, candle: Candle): { state: ContinuationState, event: StructureEvent | null } | null {
+    if (timeframe === '15m') {
+      this.candles15m.push(candle);
+      if (this.candles15m.length > 300) this.candles15m = this.candles15m.slice(-300);
+      const res = updateStructure(this.state15m, this.candles15m, this.pivotLen);
+      this.state15m = res.state;
+      return res; // We only care about bias from HTF, but returning event is fine
+    } else if (timeframe === '5m') {
+      this.candles5m.push(candle);
+      if (this.candles5m.length > 300) this.candles5m = this.candles5m.slice(-300);
+      const res = updateStructure(this.state5m, this.candles5m, this.pivotLen);
+      this.state5m = res.state;
+      return res; // LTF event drives continuation Engine
     }
+    return null;
   }
 }

@@ -2,8 +2,8 @@ import WebSocket from 'ws';
 import { config } from '../config/env';
 import { Candle } from '../types';
 
-type HistoryCallback = (symbol: string, candles: Candle[]) => void;
-type CandleCallback = (symbol: string, candle: Candle) => void;
+type HistoryCallback = (symbol: string, timeframe: string, candles: Candle[]) => void;
+type CandleCallback = (symbol: string, timeframe: string, candle: Candle) => void;
 
 export class DerivClient {
   private ws: WebSocket | null = null;
@@ -12,7 +12,7 @@ export class DerivClient {
   private reconnectDelay = 1000;
   private maxReconnectDelay = 30000;
 
-  // Track the current open candle per symbol. We only emit when the epoch changes.
+  // Track current candle by `symbol_timeframe` key
   private currentCandles = new Map<string, Candle>();
 
   onHistory(cb: HistoryCallback): void { this.historyCb = cb; }
@@ -26,13 +26,23 @@ export class DerivClient {
       console.log('Deriv WebSocket connected.');
       this.reconnectDelay = 1000;
 
-      // Subscribe to ticks_history for each symbol
       for (const symbol of config.symbols) {
+        // Subscribe to 15m (900)
         this.ws!.send(JSON.stringify({
           ticks_history: symbol,
           style: 'candles',
-          granularity: config.timeframe,
-          count: 200, // Fetch ~2 days of history to perfectly reconstruct the recent pivot state
+          granularity: 900,
+          count: 300, 
+          end: 'latest',
+          subscribe: 1,
+        }));
+        
+        // Subscribe to 5m (300)
+        this.ws!.send(JSON.stringify({
+          ticks_history: symbol,
+          style: 'candles',
+          granularity: 300,
+          count: 300, 
           end: 'latest',
           subscribe: 1,
         }));
@@ -44,7 +54,6 @@ export class DerivClient {
         const msg = JSON.parse(data.toString());
         this.handleMessage(msg);
       } catch (e) {
-        // ignore malformed messages
       }
     });
 
@@ -61,49 +70,68 @@ export class DerivClient {
 
   private handleMessage(msg: any): void {
     if (msg.error) {
-      console.error('Deriv API error:', msg.error.message);
+      console.error(`Deriv API Error:`, msg.error.message);
       return;
     }
 
-    // Historical candles response
-    if (msg.candles && msg.msg_type === 'candles') {
-      const symbol = msg.echo_req?.ticks_history;
-      if (symbol && this.historyCb) {
-        const candles: Candle[] = msg.candles.map((c: any) => ({
-          epoch: parseInt(c.epoch, 10),
-          open: parseFloat(c.open),
-          high: parseFloat(c.high),
-          low: parseFloat(c.low),
-          close: parseFloat(c.close),
-        }));
-        this.historyCb(symbol, candles);
+    // Historical data
+    if (msg.msg_type === 'candles') {
+      const symbol = msg.echo_req.ticks_history;
+      const tfNumeric = msg.echo_req.granularity;
+      const timeframe = tfNumeric === 900 ? '15m' : '5m';
+
+      const candles: Candle[] = msg.candles.map((c: any) => ({
+        symbol,
+        timeframe,
+        time: c.epoch * 1000,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }));
+
+      // The last candle in the history array is the current incomplete candle.
+      // We pop it off to seed our live tracking, and pass the rest as confirmed history.
+      const incompleteCandle = candles.pop();
+      if (incompleteCandle) {
+        this.currentCandles.set(`${symbol}_${timeframe}`, incompleteCandle);
+      }
+
+      if (this.historyCb) {
+        this.historyCb(symbol, timeframe, candles);
       }
     }
 
-    // Streaming candle (ohlc) — sent continuously on every tick
-    if (msg.ohlc && msg.msg_type === 'ohlc') {
-      const symbol = msg.echo_req?.ticks_history;
-      if (symbol && this.candleCb) {
-        const currentEpoch = parseInt(msg.ohlc.epoch, 10);
-        
-        const tickCandle: Candle = {
-          epoch: currentEpoch,
-          open: parseFloat(msg.ohlc.open),
-          high: parseFloat(msg.ohlc.high),
-          low: parseFloat(msg.ohlc.low),
-          close: parseFloat(msg.ohlc.close),
-        };
+    // Live streaming candle update
+    if (msg.msg_type === 'ohlc') {
+      const symbol = msg.ohlc.symbol;
+      const tfNumeric = msg.ohlc.granularity;
+      const timeframe = tfNumeric === 900 ? '15m' : '5m';
+      const key = `${symbol}_${timeframe}`;
 
-        const existingCandle = this.currentCandles.get(symbol);
+      const ohlc = msg.ohlc;
+      const liveCandle: Candle = {
+        symbol,
+        timeframe,
+        time: ohlc.open_time * 1000,
+        open: parseFloat(ohlc.open),
+        high: parseFloat(ohlc.high),
+        low: parseFloat(ohlc.low),
+        close: parseFloat(ohlc.close),
+      };
 
-        // If we have an existing candle and the epoch has moved forward,
-        // it means the existing candle has officially closed!
-        if (existingCandle && existingCandle.epoch < currentEpoch) {
-          this.candleCb(symbol, existingCandle);
+      const tracked = this.currentCandles.get(key);
+
+      if (tracked && tracked.time < liveCandle.time) {
+        // A new candle period has started, which means 'tracked' has officially closed.
+        if (this.candleCb) {
+          this.candleCb(symbol, timeframe, tracked);
         }
-
-        // Always update the buffer with the latest tick for the current epoch
-        this.currentCandles.set(symbol, tickCandle);
+        // Start tracking the new candle
+        this.currentCandles.set(key, liveCandle);
+      } else {
+        // Update the current tracked candle with the latest live data
+        this.currentCandles.set(key, liveCandle);
       }
     }
   }

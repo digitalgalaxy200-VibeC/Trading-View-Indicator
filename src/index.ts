@@ -5,108 +5,109 @@ import { eventRepository } from './db/eventRepository';
 import { marketStateRepository } from './db/marketStateRepository';
 import { DerivClient } from './api/derivClient';
 import { CandleManager } from './engine/candleManager';
-import { ConfirmationLayer } from './engine/confirmationLayer';
-import { OpportunityEngine } from './engine/opportunityEngine';
+import { processCandle, checkEntryFill } from './engine/continuationEngine';
 import { AlertQueue } from './notification/alertQueue';
 import { NotificationEngine } from './notification/notificationEngine';
 import { startServer } from './server/app';
-import { BreakoutEvent } from './types';
+import { BreakoutEvent, OpportunityRow, EngineAction } from './types';
 
 console.log('============================================');
-console.log('🚀 Market Structure Engine v3 Starting...');
+console.log('🚀 Continuation Engine v5 Starting...');
 console.log(`Tracking ${config.symbols.length} Symbols: ${config.symbols.join(', ')}`);
-console.log(`Timeframe: ${config.timeframe}s | Engine: True SMC Structure Engine`);
-console.log(`Notifications: every ${config.notificationCheckSeconds}s`);
 console.log('============================================');
 
-// ── Initialize database ──
 initializeDatabase();
 
-// ── Shared Alert Queue ──
 const alertQueue = new AlertQueue();
-
-// ── System 1: Notification Engine ──
 const notificationEngine = new NotificationEngine(alertQueue);
 notificationEngine.start();
 
-// ── System 2: Opportunity Engine ──
-const opportunityEngine = new OpportunityEngine();
-
-// ── Deriv WebSocket Client ──
 const derivClient = new DerivClient();
-
-const onEventDetected = (symbol: string, rawEvent: Omit<BreakoutEvent, 'symbol'>) => {
-  const event = { ...rawEvent, symbol } as BreakoutEvent;
-  console.log(`\n📊 [${symbol}] ${event.direction} ${event.event} @ ${event.price} (Pivot: ${event.pivotLevel})`);
-
-  const symbolId = symbolRepository.getId(symbol);
-  if (!symbolId) {
-    console.error(`  Unknown symbol: ${symbol}`);
-    return;
-  }
-
-  // Save event to database
-  const eventRow = eventRepository.insert(event, symbolId);
-  if (!eventRow) {
-    console.log(`  ⏭ Duplicate event suppressed.`);
-    return;
-  }
-  console.log(`  ✅ Event saved (ID: ${eventRow.id})`);
-
-  // Update market state
-  const isChoch = event.event.toUpperCase().includes('CHOCH');
-  marketStateRepository.upsert(symbolId, event.trendAfter, event.price, isChoch);
-
-  // Enqueue alert for notification ONLY IF it's a BOS event
-  if (event.event.includes('BOS')) {
-    alertQueue.enqueue(eventRow.id);
-    console.log(`  📬 Alert queued (pending: ${alertQueue.count()})`);
-  } else {
-    console.log(`  ⏭ Event is CHoCH. Suppressed from notification queue.`);
-  }
-
-  // ── System 2: Evaluate active opportunities for this symbol ──
-  opportunityEngine.onEvent(event).catch(err =>
-    console.error('  ⚠️ OpportunityEngine event error:', err.message)
-  );
-};
-
-// ── Create CandleManager per symbol ──
 const managers = new Map<string, CandleManager>();
 
 for (const symbol of config.symbols) {
-  const manager = new CandleManager((event) => onEventDetected(symbol, event));
-  managers.set(symbol, manager);
+  // Use pivotLen from config
+  managers.set(symbol, new CandleManager(symbol, config.pivotLength));
 }
 
-derivClient.onHistory((symbol, candles) => {
+derivClient.onHistory((symbol, timeframe, candles) => {
   const manager = managers.get(symbol);
-  if (manager) manager.initializeHistory(candles);
+  if (manager) manager.initializeHistory(timeframe, candles);
 });
 
-derivClient.onCandleClosed((symbol, candle) => {
+derivClient.onCandleClosed((symbol, timeframe, candle) => {
   const manager = managers.get(symbol);
-  if (manager) manager.onNewCandleClosed(candle);
+  if (!manager) return;
+
+  const res = manager.onNewCandleClosed(timeframe, candle);
   
-  // Feed candle to OpportunityEngine
-  opportunityEngine.onCandle(symbol, candle).catch(err =>
-    console.error('  ⚠️ OpportunityEngine candle error:', err.message)
-  );
+  if (timeframe === '5m' && res) {
+    // Process LTF continuation engine
+    const htfBias = manager.getHtfState().bias;
+    const ltfState = manager.getLtfState();
+    
+    const { actions: processActions } = processCandle(ltfState, candle, res.event, htfBias);
+    const fillActions = checkEntryFill(ltfState, candle);
+    
+    const allActions = [...processActions, ...fillActions];
+    
+    for (const action of allActions) {
+      if (action.kind === 'LEG_ARMED' || action.kind === 'TRADE_ENTERED') {
+        const symbolId = symbolRepository.getId(symbol);
+        if (!symbolId) continue;
+        
+        // Map to OpportunityRow so notification engine can consume it
+        const opp: OpportunityRow = {
+          id: Date.now(), // ephemeral ID
+          symbol_id: symbolId,
+          direction: action.kind === 'LEG_ARMED' ? action.event.direction : action.trade.direction,
+          workflow_type: 'continuation',
+          watch_level: action.kind === 'LEG_ARMED' ? 2 : 3,
+          status: 'active',
+          choch_event_id: null,
+          bos_event_id: null,
+          impulse_high: action.kind === 'LEG_ARMED' ? action.event.leg.extremePrice : action.trade.target,
+          impulse_low: action.kind === 'LEG_ARMED' ? action.event.leg.originPrice : action.trade.stop,
+          fib_0: action.kind === 'LEG_ARMED' ? action.fib.stop : action.trade.stop,
+          fib_50: action.kind === 'LEG_ARMED' ? action.fib.entry : action.trade.entry,
+          fib_100: action.kind === 'LEG_ARMED' ? action.fib.target : action.trade.target,
+          entry_price: action.kind === 'LEG_ARMED' ? action.fib.entry : action.trade.entry,
+          stop_loss: action.kind === 'LEG_ARMED' ? action.fib.stop : action.trade.stop,
+          take_profit: action.kind === 'LEG_ARMED' ? action.fib.target : action.trade.target,
+          risk_reward: 1,
+          created_at: Date.now(),
+          updated_at: Date.now(),
+          notified_at: null,
+        };
+        alertQueue.enqueueOpportunity(opp);
+      }
+    }
+    
+    // Maintain backwards compatibility for market state / dashboard
+    if (res.event) {
+      const symbolId = symbolRepository.getId(symbol);
+      if (symbolId) {
+        const isChoch = res.event.type === 'CHOCH';
+        const trendAfter = res.event.direction.toUpperCase();
+        marketStateRepository.upsert(symbolId, trendAfter, res.event.price, isChoch);
+        
+        // Insert event if it's BOS so dashboard sees it
+        if (!isChoch) {
+          eventRepository.insert({
+            symbol: res.event.symbol,
+            event: res.event.direction === 'bullish' ? 'Bullish BOS' : 'Bearish BOS',
+            direction: res.event.direction.toUpperCase() as any,
+            price: res.event.price,
+            pivotLevel: res.event.leg.originPrice,
+            trendBefore: 'BULLISH', // Not used rigorously anymore
+            trendAfter: trendAfter as any,
+            candleEpoch: res.event.time / 1000
+          }, symbolId);
+        }
+      }
+    }
+  }
 });
 
 derivClient.connect();
-
-// ── Dashboard Server ──
 startServer();
-
-// ── Graceful shutdown ──
-process.on('SIGINT', () => {
-  console.log('\nShutting down...');
-  notificationEngine.stop();
-  process.exit(0);
-});
-process.on('SIGTERM', () => {
-  console.log('\nShutting down...');
-  notificationEngine.stop();
-  process.exit(0);
-});

@@ -16,38 +16,18 @@ import { opportunityRepository } from '../db/opportunityRepository';
 
 const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
 
-const SYSTEM_PROMPT = `You are an AI Trading Assistant — the personal analyst of the user.
+const SYSTEM_PROMPT = `You are a raw, highly intelligent SMC (Smart Money Concepts) Trading Analyst. You are not a rigid bot—you are a deep-thinking, analytical AI powered by DeepSeek. 
 
-You do NOT scan the market yourself. You read objective data produced by the Market Structure Engine (System 1), which monitors all instruments on a 15-minute timeframe using Smart Money Concepts (SMC).
+The user trades a specific strategy on 11 pairs (typically Volatility Indices) using Break of Structure (BOS) and Change of Character (CHoCH) to determine trend continuation. 
 
-CRITICAL ENGINE GUARANTEE: Every BOS and CHoCH event you receive has already been validated by the engine as a CONFIRMED EXTERNAL STRUCTURAL BREAK. The engine uses body-close confirmation (not wicks) and strict higher-high / lower-low classification to filter out all internal noise and sub-structure. You must NEVER speculate about whether a reported BOS is "internal" or "external" — by the time you see it, it is already confirmed external structure.
+You have access to live tools to read the market state and recent structural events. 
 
-CRITICAL DATA RULES — NEVER VIOLATE THESE:
-1. NEVER state a price, trend, BOS level, or CHoCH level from memory or conversation history.
-2. ALWAYS call get_market_state or get_recent_events FIRST before answering any question about market data.
-3. If the user says your data is wrong, immediately call the tools again — do NOT guess a correction.
-4. The live context injected at the top of this prompt is the ground truth. Use it. Do not contradict it.
-5. If a tool returns no data, say so honestly — do not fill in numbers.
-
-Your responsibilities:
-1. Answer questions about market structure using the live data tools.
-2. Explain why a specific event occurred in the context of the user's strategy.
-3. Check the Opportunity Watchlist to see if the market is setting up for a trade.
-4. Be concise, analytical, and use professional SMC terminology (BOS, CHoCH, swing high/low, impulse, correction, displacement, etc.).
-5. NEVER give buy/sell entry recommendations.
-6. ALWAYS end trading-related responses with: "The final trading decision belongs entirely to you."
-
-### Opportunity Priority Rule
-If the user asks:
-* "What opportunities do I have?"
-* "Show my setups."
-* "Any trades?"
-* "What should I look at?"
-The AI MUST query the Opportunity Engine (using get_opportunities).
-It must NOT generate opportunities from CHOCH or BOS records.
-If there are active opportunities, they are the authoritative source.
-Only if there are zero active opportunities should the AI optionally say:
-"There are no active opportunities at the moment. The most recent structural events are..." and then discuss CHOCH/BOS.`;
+Your goals:
+1. Act as an intelligent analyst. Understand BOS, CHoCH, trends, and SMC deeply.
+2. Read the live data provided via tools or injected context and give the user proper, unrestricted analysis.
+3. If the user asks you to compare pairs, tell them which are in clear trends, which have broken structure, and give your own intelligent advice on what to look at.
+4. You are free to synthesize information across tools to answer random, open-ended questions intelligently. Do not just recite data—analyze it.
+5. NEVER give financial advice to buy or sell, but you CAN advise on which pairs present the best technical setups based on the SMC data. Always remind the user that the final decision is theirs.`;
 
 // Tool definitions for DeepSeek
 const TOOLS = [
@@ -109,11 +89,11 @@ function executeTool(name: string, args: any): string {
       if (opps.length === 0) return 'There are currently no active opportunities on the watchlist.';
       
       return opps.map(o => {
-        let details = `[${o.ticker}] ${o.direction} ${o.type} | Status: ${o.status}`;
+        let details = `[${o.ticker}] ${o.direction} ${o.workflow_type} | Status: ${o.status}`;
         if (o.entry_price) {
           details += `\n  - Entry Zone (50%): ${o.entry_price.toFixed(4)}`;
-          details += `\n  - Stop Loss (0%): ${o.impulse_start_price?.toFixed(4)}`;
-          details += `\n  - Take Profit (100%): ${o.impulse_end_price?.toFixed(4)}`;
+          details += `\n  - Stop Loss (0%): ${o.impulse_low?.toFixed(4)}`;
+          details += `\n  - Take Profit (100%): ${o.impulse_high?.toFixed(4)}`;
         }
         return details;
       }).join('\n\n');
@@ -146,41 +126,23 @@ export class AiAssistantService {
     const liveOpportunities = executeTool('get_opportunities', {});
     const hasActiveOpportunities = !liveOpportunities.includes('no active opportunities');
 
-    // Only inject raw events if there are NO active opportunities.
-    // When active opportunities exist, we deliberately hide raw events so the
-    // AI cannot use them as a source for generating setups.
-    const liveRecentEvents = hasActiveOpportunities
-      ? null
-      : executeTool('get_recent_events', { limit: 15 });
+    // Inject the raw events and market states so the AI can analyze freely
+    const liveRecentEvents = executeTool('get_recent_events', { limit: 20 });
 
-    const liveDataBlock = hasActiveOpportunities
-      ? `
+    const liveDataBlock = `
 == LIVE ENGINE DATA (Ground Truth — injected at ${new Date().toISOString()}) ==
 
-Current Market State:
+Current Market State (All 11 Pairs):
 ${liveMarketState}
 
-ACTIVE OPPORTUNITY WATCHLIST — THIS IS YOUR ONLY SOURCE FOR TRADING SETUPS:
+Opportunity Watchlist:
 ${liveOpportunities}
 
-== END LIVE DATA ==
-STRICT RULE: Active opportunities are listed above. You MUST answer ALL setup/opportunity questions EXCLUSIVELY from this list.
-Do NOT mention any other instrument that is not in this list as a trading opportunity.
-Do NOT reference BOS or CHoCH events as opportunities. Only the Opportunity Watchlist is authoritative.`
-      : `
-== LIVE ENGINE DATA (Ground Truth — injected at ${new Date().toISOString()}) ==
-
-Current Market State:
-${liveMarketState}
-
-Active Opportunities (Opportunity Watchlist):
-There are currently no active opportunities. The engine is scanning the market.
-
-Most Recent Structural Events (newest first):
+Most Recent Structural Events:
 ${liveRecentEvents}
 
 == END LIVE DATA ==
-IMPORTANT: There are no active opportunities right now. You may discuss recent structural events for educational context only, but make clear that no setups have been confirmed by the Opportunity Engine.`;
+Use this data to answer the user's analytical questions freely and intelligently. You are not restricted; you can advise, compare, and analyze as a top-tier SMC trader.`;
 
     let dynamicSystemPrompt = `${SYSTEM_PROMPT}
 
