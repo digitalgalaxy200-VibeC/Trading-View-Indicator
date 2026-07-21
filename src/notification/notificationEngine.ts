@@ -79,7 +79,7 @@ export class NotificationEngine {
 
         const result = await sendOpportunityEmail(opp, scoreText);
         if (result.success) {
-          opportunityRepository.updateStatus(opp.id, 'TRIGGERED');
+          opportunityRepository.update(opp.id, { status: 'notified' });
         }
 
         const emailRow = emailRepository.insert(1, scoreText, result.resendId || null, result.success ? 'sent' : 'failed');
