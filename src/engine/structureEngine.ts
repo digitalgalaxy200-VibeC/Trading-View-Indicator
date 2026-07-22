@@ -123,10 +123,10 @@ function bodyClosesBelow(c: Candle, level: number): boolean {
 
 // ── Defensive: Validate candle interval matches expected timeframe ────────
 
-const TF_SEC: Record<string, number> = {
-  '5m': 5 * 60,
-  '15m': 15 * 60,
-  '1m': 60,
+const TF_MS: Record<string, number> = {
+  '5m': 5 * 60 * 1000,
+  '15m': 15 * 60 * 1000,
+  '1m': 60 * 1000,
 };
 
 /**
@@ -138,16 +138,16 @@ export function validateCandleInterval(
   timeframeKey: string,
   toleranceRatio = 0.2
 ): boolean {
-  const expectedSec = TF_SEC[timeframeKey];
-  if (!expectedSec) return true;
+  const expectedMs = TF_MS[timeframeKey];
+  if (!expectedMs) return true;
   if (candles.length < 4) return false;
 
   const recent = candles.slice(-5);
-  const tolerance = expectedSec * toleranceRatio;
+  const tolerance = expectedMs * toleranceRatio;
 
   for (let i = 1; i < recent.length; i++) {
-    const gap = recent[i].epoch - recent[i - 1].epoch;
-    if (Math.abs(gap - expectedSec) > tolerance) return false;
+    const gap = recent[i].time - recent[i - 1].time;
+    if (Math.abs(gap - expectedMs) > tolerance) return false;
   }
   return true;
 }
@@ -188,7 +188,7 @@ export class StructureEngine {
       // The "current" candle we evaluate for BOS/CHoCH is the confirmation bar (nextBar)
       const current = nextBar;
 
-      if (current.epoch <= this.state.lastProcessedEpoch) continue;
+      if (current.time <= this.state.lastProcessedEpoch) continue;
 
       // ── Phase 1: Raw Swing Detection (3-bar pivot) ──────────────────────
       //
@@ -205,7 +205,7 @@ export class StructureEngine {
           // In bullish trend: structural only if it extends the ceiling (Higher High)
           if (this.state.anchorHigh === null || pivot.high > this.state.anchorHigh) {
             this.state.anchorHigh      = pivot.high;
-            this.state.anchorHighEpoch = pivot.epoch;
+            this.state.anchorHighEpoch = pivot.time;
             // Reset pullback low: new ceiling means we are at the top; next dip is fresh pullback
             this.state.pullbackLow = null;
           }
@@ -214,7 +214,7 @@ export class StructureEngine {
           // In bearish trend: structural only if it falls (Lower High — confirms bear ceiling)
           if (this.state.anchorHigh === null || pivot.high < this.state.anchorHigh) {
             this.state.anchorHigh      = pivot.high;
-            this.state.anchorHighEpoch = pivot.epoch;
+            this.state.anchorHighEpoch = pivot.time;
             this.state.pullbackHigh = null;
           }
           // Higher High in bearish = potential CHoCH → detected by body-close check below
@@ -226,7 +226,7 @@ export class StructureEngine {
           // Structural only if it rises (Higher Low — confirms bull floor)
           if (this.state.anchorLow === null || pivot.low > this.state.anchorLow) {
             this.state.anchorLow      = pivot.low;
-            this.state.anchorLowEpoch = pivot.epoch;
+            this.state.anchorLowEpoch = pivot.time;
             this.state.pullbackLow = null;
           }
           // Lower Low in bullish = potential CHoCH → detected by body-close check below
@@ -234,7 +234,7 @@ export class StructureEngine {
           // In bearish trend: structural only if it extends the floor (Lower Low)
           if (this.state.anchorLow === null || pivot.low < this.state.anchorLow) {
             this.state.anchorLow      = pivot.low;
-            this.state.anchorLowEpoch = pivot.epoch;
+            this.state.anchorLowEpoch = pivot.time;
             this.state.pullbackHigh = null;
           }
           // Higher Low in bearish = internal noise → ignored
@@ -272,7 +272,7 @@ export class StructureEngine {
             pivotLevel: brokenLevel,
             trendBefore: 'BULLISH',
             trendAfter: 'BULLISH',
-            candleEpoch: current.epoch,
+            candleEpoch: current.time,
           });
 
           // Reset ceiling — the next raw Higher High becomes the new target
@@ -282,7 +282,7 @@ export class StructureEngine {
           // Advance the structural floor to the most recent pullback low
           if (newFloor !== null) {
             this.state.anchorLow      = newFloor;
-            this.state.anchorLowEpoch = current.epoch;
+            this.state.anchorLowEpoch = current.time;
           }
 
           // Reset pullback trackers
@@ -302,7 +302,7 @@ export class StructureEngine {
             pivotLevel: brokenLevel,
             trendBefore: 'BULLISH',
             trendAfter: 'BEARISH',
-            candleEpoch: current.epoch,
+            candleEpoch: current.time,
           });
 
           this.state.currentTrend    = BEARISH;
@@ -329,7 +329,7 @@ export class StructureEngine {
             pivotLevel: brokenLevel,
             trendBefore: 'BEARISH',
             trendAfter: 'BEARISH',
-            candleEpoch: current.epoch,
+            candleEpoch: current.time,
           });
 
           this.state.anchorLow       = null;
@@ -337,7 +337,7 @@ export class StructureEngine {
 
           if (newCeiling !== null) {
             this.state.anchorHigh      = newCeiling;
-            this.state.anchorHighEpoch = current.epoch;
+            this.state.anchorHighEpoch = current.time;
           }
 
           this.state.pullbackLow  = null;
@@ -356,7 +356,7 @@ export class StructureEngine {
             pivotLevel: brokenLevel,
             trendBefore: 'BEARISH',
             trendAfter: 'BULLISH',
-            candleEpoch: current.epoch,
+            candleEpoch: current.time,
           });
 
           this.state.currentTrend     = BULLISH;
@@ -367,9 +367,107 @@ export class StructureEngine {
         }
       }
 
-      this.state.lastProcessedEpoch = current.epoch;
+      this.state.lastProcessedEpoch = current.time;
     }
 
     return events;
   }
+}
+
+// ── V5: Continuation Engine integration ──────────────────────────────────
+
+import { ContinuationState, StructureEvent as V5StructureEvent, Bias } from '../types';
+import { detectNewPivot } from './pivotDetector';
+
+/**
+ * Create a fresh ContinuationState for one symbol/timeframe.
+ */
+export function createStructureState(symbol: string, timeframe: string): ContinuationState {
+  return {
+    symbol,
+    timeframe,
+    stage: 'IDLE',
+    bias: 'neutral',
+    leg: null,
+    fib: null,
+    trade: null,
+    confirmCount: 0,
+    lastSwingHigh: null,
+    lastSwingLow: null,
+    highBroken: false,
+    lowBroken: false,
+  };
+}
+
+/**
+ * Call on every new closed candle. Does NOT decide trade entries — only
+ * classifies BOS/CHOCH and updates bias. Caller should run
+ * validateCandleInterval() first and skip this call (keeping last known
+ * good state) if it fails.
+ */
+export function updateStructure(
+  state: ContinuationState,
+  candles: Candle[],
+  pivotLen: number
+): { state: ContinuationState; event: V5StructureEvent | null } {
+  const newPivot = detectNewPivot(candles, pivotLen);
+
+  if (newPivot?.type === 'high') {
+    state.lastSwingHigh = newPivot;
+    state.highBroken = false;
+  }
+  if (newPivot?.type === 'low') {
+    state.lastSwingLow = newPivot;
+    state.lowBroken = false;
+  }
+
+  const latest = candles[candles.length - 1];
+  const bullBreak =
+    !!state.lastSwingHigh && !state.highBroken && latest.close > state.lastSwingHigh.price;
+  const bearBreak =
+    !!state.lastSwingLow && !state.lowBroken && latest.close < state.lastSwingLow.price;
+
+  let event: V5StructureEvent | null = null;
+
+  if (bullBreak && state.lastSwingHigh && state.lastSwingLow) {
+    const isChoch = state.bias !== 'bullish';
+    state.highBroken = true;
+    event = {
+      symbol: state.symbol,
+      timeframe: state.timeframe,
+      type: isChoch ? 'CHOCH' : 'BOS',
+      direction: 'bullish',
+      price: state.lastSwingHigh.price,
+      time: latest.time,
+      leg: {
+        direction: 'bullish',
+        originPrice: state.lastSwingLow.price,
+        originTime: state.lastSwingLow.time,
+        extremePrice: state.lastSwingHigh.price,
+        extremeTime: state.lastSwingHigh.time,
+      },
+    };
+    state.bias = 'bullish';
+  } else if (bearBreak && state.lastSwingLow && state.lastSwingHigh) {
+    const isChoch = state.bias !== 'bearish';
+    state.lowBroken = true;
+    event = {
+      symbol: state.symbol,
+      timeframe: state.timeframe,
+      type: isChoch ? 'CHOCH' : 'BOS',
+      direction: 'bearish',
+      price: state.lastSwingLow.price,
+      time: latest.time,
+      leg: {
+        direction: 'bearish',
+        originPrice: state.lastSwingHigh.price,
+        originTime: state.lastSwingHigh.time,
+        extremePrice: state.lastSwingLow.price,
+        extremeTime: state.lastSwingLow.time,
+      },
+    };
+    state.bias = 'bearish';
+  }
+
+  return { state, event };
 }

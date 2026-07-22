@@ -111,11 +111,11 @@ function executeTool(name: string, args: any): string {
       if (opps.length === 0) return 'There are currently no active opportunities on the watchlist.';
       
       return opps.map(o => {
-        let details = `[${o.ticker}] ${o.direction} ${o.type} | Status: ${o.status}`;
+        let details = `[${o.ticker}] ${o.direction} ${(o as any).type} | Status: ${o.status}`;
         if (o.entry_price) {
           details += `\n  - Entry Zone (50%): ${o.entry_price.toFixed(4)}`;
-          details += `\n  - Stop Loss (0%): ${o.impulse_start_price?.toFixed(4)}`;
-          details += `\n  - Take Profit (100%): ${o.impulse_end_price?.toFixed(4)}`;
+          details += `\n  - Stop Loss (0%): ${(o as any).impulse_start_price?.toFixed(4)}`;
+          details += `\n  - Take Profit (100%): ${(o as any).impulse_end_price?.toFixed(4)}`;
         }
         return details;
       }).join('\n\n');
