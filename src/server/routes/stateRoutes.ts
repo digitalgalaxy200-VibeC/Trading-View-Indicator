@@ -7,6 +7,7 @@ import { configRepository } from '../../db/configRepository';
 import { symbolRepository } from '../../db/symbolRepository';
 import { profileRepository } from '../../db/profileRepository';
 import { opportunityRepository } from '../../db/opportunityRepository';
+import { getManagers } from '../../engine/pipelineState';
 
 export const stateRoutes = Router();
 
@@ -137,6 +138,33 @@ stateRoutes.post('/profile', (req: Request, res: Response) => {
     if (typeof content !== 'string') return res.status(400).json({ error: 'content is required' });
     profileRepository.update(content);
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// V5: Pipeline State
+stateRoutes.get('/pipeline', (_req: Request, res: Response) => {
+  try {
+    const managers = getManagers();
+    if (!managers) return res.json([]);
+    const stages: Record<string, string> = { IDLE: 'Idle', CHOCH_WARN: 'Phase 1: CHOCH Seen', ARMED: 'Phase 2: BOS Armed', IN_TRADE: 'Phase 3: In Trade' };
+    const rows: any[] = [];
+    for (const [symbol, m] of managers) {
+      const htf = m.getHtfState();
+      const ltf = m.getLtfState();
+      rows.push({
+        symbol,
+        bias15m: htf.bias,
+        stage: ltf.stage,
+        stageLabel: stages[ltf.stage] || ltf.stage,
+        direction: ltf.leg?.direction || null,
+        fib50: ltf.fib?.entry || null,
+        fib0: ltf.fib?.stop || null,
+        fib100: ltf.fib?.target || null,
+      });
+    }
+    res.json(rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

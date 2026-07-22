@@ -6,6 +6,7 @@ import { marketStateRepository } from './db/marketStateRepository';
 import { DerivClient } from './api/derivClient';
 import { CandleManager } from './engine/candleManager';
 import { processCandle, checkEntryFill } from './engine/continuationEngine';
+import { setManagers } from './engine/pipelineState';
 import { AlertQueue } from './notification/alertQueue';
 import { NotificationEngine } from './notification/notificationEngine';
 import { buildStructureAlert } from './notification/structureAlertBuilder';
@@ -34,6 +35,9 @@ for (const symbol of config.symbols) {
   managers.set(symbol, new CandleManager(symbol, config.pivotLength));
   recentCandles5m.set(symbol, []);
 }
+
+// Expose to dashboard API
+setManagers(managers);
 
 // ── Log engine actions to DB (for dashboard/stats) ─────────────────────────
 function logAction(symbol: string, action: EngineAction): void {

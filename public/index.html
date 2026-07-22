@@ -514,6 +514,18 @@
     </div>
   </div>
 
+  <!-- Pipeline -->
+  <div class="section">
+    <div class="section-header">
+      <div class="section-title">Continuation Pipeline</div>
+      <div class="section-badge" id="pipe-ct">—</div>
+    </div>
+    <table id="pipeline-table" style="width:100%;font-size:12px;">
+      <thead><tr><th>Symbol</th><th>15m Bias</th><th>Stage</th><th>Direction</th><th>Entry (50%)</th><th>Stop (0%)</th><th>Target (100%)</th></tr></thead>
+      <tbody><tr><td colspan="7" style="padding:20px;color:var(--muted);text-align:center;">Loading...</td></tr></tbody>
+    </table>
+  </div>
+
   <!-- Alert History -->
   <div class="section">
     <div class="section-header">
@@ -828,6 +840,29 @@ async function loadOpportunities() {
   } catch(e) { console.error(e); }
 }
 
+async function loadPipeline() {
+  try {
+    const res = await fetch(API + '/pipeline');
+    const data = await res.json();
+    document.getElementById('pipe-ct').textContent = data.length + ' symbols';
+    if (!data.length) {
+      document.querySelector('#pipeline-table tbody').innerHTML = '<tr><td colspan="7" style="padding:20px;color:var(--muted);text-align:center;">No pipeline data yet</td></tr>';
+      return;
+    }
+    const stageColors = { IDLE: '#64748b', CHOCH_WARN: '#f59e0b', ARMED: '#3b82f6', IN_TRADE: '#10b981' };
+    document.querySelector('#pipeline-table tbody').innerHTML = data.map(r => `
+      <tr>
+        <td style="font-weight:bold;color:#fff">${r.symbol}</td>
+        <td class="${r.bias15m==='bullish'?'bull':'bear'}">${r.bias15m.toUpperCase()}</td>
+        <td><span style="background:${stageColors[r.stage]};color:#fff;padding:2px 8px;border-radius:4px;font-size:10px">${r.stageLabel}</span></td>
+        <td>${r.direction||'—'}</td>
+        <td>${r.fib50?.toFixed(2)||'—'}</td>
+        <td>${r.fib0?.toFixed(2)||'—'}</td>
+        <td>${r.fib100?.toFixed(2)||'—'}</td>
+      </tr>`).join('');
+  } catch(e) { console.error(e); }
+}
+
 async function fetchAlerts(filter) {
   currentFilter = filter || currentFilter;
   try {
@@ -939,7 +974,7 @@ document.querySelectorAll('.filter-btn').forEach(btn => {
 });
 
 async function loadAll() {
-  await Promise.all([loadStats(), loadState(), loadOpportunities(), fetchAlerts(), fetchEmails()]);
+  await Promise.all([loadStats(), loadState(), loadPipeline(), loadOpportunities(), fetchAlerts(), fetchEmails()]);
   document.getElementById('last-updated').textContent = 'Updated ' + new Date().toISOString().substring(11,19) + ' UTC';
   initLatestTimestamp();
 }
